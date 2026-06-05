@@ -276,6 +276,11 @@ button:disabled {
   gap: 20px;
 }
 
+.histogram-stack {
+  display: grid;
+  gap: 16px;
+}
+
 .histogram-panel {
   display: grid;
   gap: 12px;
@@ -285,50 +290,17 @@ button:disabled {
   background: #fffefa;
 }
 
-.histogram-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.histogram-header h2 {
-  margin-bottom: 0;
-}
-
-.histogram-header p {
+.histogram-panel h2 {
   margin: 0;
-  color: #627268;
-  font-size: 0.88rem;
+  font-size: 1.1rem;
 }
 
-.histogram-legend {
-  display: flex;
-  gap: 16px;
+.distribution-title-yes {
+  color: #12654e;
 }
 
-.histogram-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #263a31;
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
-.histogram-legend span::before {
-  content: "";
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-}
-
-.legend-yes::before {
-  background: #1b8d70;
-}
-
-.legend-no::before {
-  background: #c35a49;
+.distribution-title-no {
+  color: #9b3328;
 }
 
 .histogram {
@@ -348,17 +320,22 @@ button:disabled {
 
 .histogram-bars {
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 3px;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
   height: 180px;
 }
 
 .histogram-bar {
-  width: 42%;
+  width: 100%;
   min-height: 2px;
   border-radius: 4px 4px 0 0;
-  transition: height 180ms ease;
+  cursor: help;
+  transition: opacity 120ms ease;
+}
+
+.histogram-bar:hover {
+  opacity: 0.75;
 }
 
 .yes-bar {
@@ -549,7 +526,6 @@ summary {
   }
 
   .form-actions,
-  .histogram-header,
   .model-result-header {
     align-items: stretch;
     flex-direction: column;

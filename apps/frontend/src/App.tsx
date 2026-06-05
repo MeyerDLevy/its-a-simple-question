@@ -175,41 +175,66 @@ function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoad
   );
 }
 
+type DistributionEntry = {
+  model: string;
+  probability: number;
+};
+
+type DistributionBin = {
+  label: string;
+  start: number;
+  end: number;
+  entries: DistributionEntry[];
+};
+
 function ProbabilityHistogram({ results }: { results: AnswerResponse[] }) {
-  const bins = useMemo(() => buildProbabilityBins(results), [results]);
+  const yesBins = useMemo(() => buildDistributionBins(results, "Yes"), [results]);
+  const noBins = useMemo(() => buildDistributionBins(results, "No"), [results]);
 
   if (results.length === 0) {
     return null;
   }
 
-  const maxCount = Math.max(1, ...bins.flatMap((bin) => [bin.yesCount, bin.noCount]));
+  return (
+    <div className="histogram-stack">
+      <FrequencyDistribution title="Yes" bins={yesBins} barClassName="yes-bar" />
+      <FrequencyDistribution title="No" bins={noBins} barClassName="no-bar" />
+    </div>
+  );
+}
+
+function FrequencyDistribution({
+  title,
+  bins,
+  barClassName
+}: {
+  title: "Yes" | "No";
+  bins: DistributionBin[];
+  barClassName: string;
+}) {
+  const maxCount = Math.max(1, ...bins.map((bin) => bin.entries.length));
+  const segmentHeight = 100 / maxCount;
 
   return (
     <div className="histogram-panel">
-      <div className="histogram-header">
-        <h2>Probability distribution</h2>
-        <p>{results.length} model run{results.length === 1 ? "" : "s"}</p>
-      </div>
+      <h2 className={title === "Yes" ? "distribution-title-yes" : "distribution-title-no"}>{title}</h2>
 
-      <div className="histogram-legend">
-        <span className="legend-yes">Yes</span>
-        <span className="legend-no">No</span>
-      </div>
-
-      <div className="histogram" role="img" aria-label="Overlaid frequency distribution of Yes and No probabilities">
+      <div
+        className="histogram"
+        role="img"
+        aria-label={`Frequency distribution of ${title} probabilities across models`}
+      >
         {bins.map((bin) => (
           <div key={bin.label} className="histogram-bin">
             <div className="histogram-bars">
-              <div
-                className="histogram-bar yes-bar"
-                style={{ height: `${(bin.yesCount / maxCount) * 100}%` }}
-                title={`Yes: ${bin.yesCount} in ${bin.label}`}
-              />
-              <div
-                className="histogram-bar no-bar"
-                style={{ height: `${(bin.noCount / maxCount) * 100}%` }}
-                title={`No: ${bin.noCount} in ${bin.label}`}
-              />
+              {bin.entries.map((entry) => (
+                <div
+                  key={`${entry.model}-${entry.probability}`}
+                  className={`histogram-bar ${barClassName}`}
+                  style={{ height: `${segmentHeight}%` }}
+                  title={`${entry.model}: ${formatPercent(entry.probability)}`}
+                />
+              ))}
             </div>
             <span className="histogram-label">{bin.label}</span>
           </div>
@@ -219,7 +244,7 @@ function ProbabilityHistogram({ results }: { results: AnswerResponse[] }) {
   );
 }
 
-function buildProbabilityBins(results: AnswerResponse[]) {
+function buildDistributionBins(results: AnswerResponse[], answer: "Yes" | "No"): DistributionBin[] {
   const bins = Array.from({ length: BIN_COUNT }, (_, index) => {
     const start = index / BIN_COUNT;
     const end = (index + 1) / BIN_COUNT;
@@ -229,27 +254,24 @@ function buildProbabilityBins(results: AnswerResponse[]) {
       label,
       start,
       end,
-      yesCount: 0,
-      noCount: 0
+      entries: [] as DistributionEntry[]
     };
   });
 
   for (const result of results) {
-    const yesProbability = result.probabilities.Yes.probability;
-    const noProbability = result.probabilities.No.probability;
+    const probability = result.probabilities[answer].probability;
 
-    if (yesProbability !== null) {
-      const yesBin = bins.find((bin) => yesProbability >= bin.start && (yesProbability < bin.end || (bin.end === 1 && yesProbability <= 1)));
-      if (yesBin) {
-        yesBin.yesCount += 1;
-      }
+    if (probability === null) {
+      continue;
     }
 
-    if (noProbability !== null) {
-      const noBin = bins.find((bin) => noProbability >= bin.start && (noProbability < bin.end || (bin.end === 1 && noProbability <= 1)));
-      if (noBin) {
-        noBin.noCount += 1;
-      }
+    const bin = bins.find(
+      (candidate) =>
+        probability >= candidate.start && (probability < candidate.end || (candidate.end === 1 && probability <= 1))
+    );
+
+    if (bin) {
+      bin.entries.push({ model: result.model, probability });
     }
   }
 

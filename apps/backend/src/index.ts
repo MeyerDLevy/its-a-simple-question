@@ -134,7 +134,7 @@ app.post("/api/answer", async (req, res, next) => {
           content: question
         }
       ],
-      temperature: 0,
+      ...(supportsTemperature(model) ? { temperature: 0 } : {}),
       top_logprobs: 20,
       include: ["message.output_text.logprobs"],
       text: {
@@ -278,6 +278,10 @@ function getFallbackModel(value: string | undefined): ModelId {
 
 function isAvailableModel(value: unknown): value is ModelId {
   return typeof value === "string" && AVAILABLE_MODELS.includes(value as ModelId);
+}
+
+function supportsTemperature(model: string): boolean {
+  return !model.startsWith("gpt-5");
 }
 
 function parseStructuredAnswer(outputText: string): { answer: Answer } {
