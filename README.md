@@ -62,5 +62,12 @@ Frontend service:
 - Start Command: `npm run start`
 - Variables:
   - `VITE_API_URL` set to the backend public URL
+  - `VITE_STRIPE_DONATION_URL` optional, your Stripe donation link; the Donate button only shows when this is set
 
 Railway injects `PORT`; both services read it automatically.
+
+`VITE_*` variables are inlined at build time, so set them before `npm run build`. For local dev, add them to `apps/frontend/.env`:
+
+```bash
+VITE_STRIPE_DONATION_URL=https://donate.stripe.com/your-link
+```

@@ -15,7 +15,7 @@ const EXAMPLES = [
   "Is there intelligent life on other planets?"
 ];
 
-const STRIPE_DONATION_URL = "https://donate.stripe.com/your-link-here";
+const STRIPE_DONATION_URL = import.meta.env.VITE_STRIPE_DONATION_URL;
 
 export default function App() {
   const [question, setQuestion] = useState("");
@@ -74,10 +74,12 @@ export default function App() {
           </p>
         </div>
 
-        <a className="donate-button" href={STRIPE_DONATION_URL} target="_blank" rel="noreferrer">
-          <Heart size={16} />
-          Donate
-        </a>
+        {STRIPE_DONATION_URL ? (
+          <a className="donate-button" href={STRIPE_DONATION_URL} target="_blank" rel="noreferrer">
+            <Heart size={16} />
+            Donate
+          </a>
+        ) : null}
 
         <form className="question-form" onSubmit={handleSubmit}>
           <div className="field-label-row">
