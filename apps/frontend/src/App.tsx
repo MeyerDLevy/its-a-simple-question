@@ -72,7 +72,7 @@ export default function App() {
 
       <section className="question-panel" aria-labelledby="app-title">
         <div>
-          <h1 id="app-title">Get Honest Answers</h1>
+          <h1 id="app-title">What Do Language Models Really Think?</h1>
           <p className="summary">
             Ask difficult questions to large language models and see what they really think. This tool uses
             constrained decoding to force the model to choose between &apos;Yes&apos; or &apos;No&apos; regardless
