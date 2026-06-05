@@ -75,10 +75,11 @@ export default function App() {
       <section className="question-panel" aria-labelledby="app-title">
         <div>
           <p className="summary">
-            Ask difficult questions to large language models and see what they really think. This tool uses
-            constrained decoding to force the model to choose between &apos;Yes&apos; or &apos;No&apos; regardless
-            of what they are asked. Probabilities of either answer are given for each model in the sidebar on the
-            right.
+            Ask difficult questions to large language models and get honest answers. This tool uses{" "}
+            <strong>constrained decoding</strong> to force the model to choose between{" "}
+            <span className="prob-yes">&apos;Yes&apos;</span> or <span className="prob-no">&apos;No&apos;</span>{" "}
+            regardless of what they are asked. Likelihoods of giving either answer are given for each model in the
+            sidebar on the right.
           </p>
         </div>
 
