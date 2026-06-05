@@ -52,6 +52,10 @@ textarea {
   padding: 48px;
 }
 
+.page-title {
+  grid-column: 1 / -1;
+}
+
 .question-panel,
 .result-panel {
   display: flex;
@@ -76,7 +80,7 @@ p {
 }
 
 h1 {
-  max-width: 680px;
+  max-width: 1360px;
   margin-bottom: 16px;
   color: var(--text);
   font-family: Georgia, "Times New Roman", Times, serif;
