@@ -63,6 +63,13 @@ export default function App() {
 
   return (
     <main className="app-shell">
+      {STRIPE_DONATION_URL ? (
+        <a className="donate-button" href={STRIPE_DONATION_URL} target="_blank" rel="noreferrer">
+          <Heart size={16} />
+          Donate
+        </a>
+      ) : null}
+
       <section className="question-panel" aria-labelledby="app-title">
         <div>
           <h1 id="app-title">It&apos;s a Simple Question...</h1>
@@ -73,13 +80,6 @@ export default function App() {
             right.
           </p>
         </div>
-
-        {STRIPE_DONATION_URL ? (
-          <a className="donate-button" href={STRIPE_DONATION_URL} target="_blank" rel="noreferrer">
-            <Heart size={16} />
-            Donate
-          </a>
-        ) : null}
 
         <form className="question-form" onSubmit={handleSubmit}>
           <div className="field-label-row">
