@@ -168,10 +168,12 @@ app.post("/api/answer", async (req, res, next) => {
     const parsed = parseStructuredAnswer(outputText, allowMaybe);
     const logprobs = collectOutputLogprobs(response);
     const probabilityData = extractAnswerProbabilities(logprobs, parsed.answer, allowedAnswers);
+    const answer = pickHighestProbabilityAnswer(probabilityData.probabilities) ?? parsed.answer;
 
     logInfo("answer:complete", {
       requestId,
-      answer: parsed.answer,
+      answer,
+      emittedAnswer: parsed.answer,
       decisionToken: probabilityData.decisionToken,
       hasYesProbability: probabilityData.probabilities.Yes?.probability !== null,
       hasNoProbability: probabilityData.probabilities.No?.probability !== null,
@@ -182,7 +184,7 @@ app.post("/api/answer", async (req, res, next) => {
       question,
       model: response.model ?? model,
       allowMaybe,
-      answer: parsed.answer,
+      answer,
       outputText,
       probabilities: probabilityData.probabilities,
       decisionToken: probabilityData.decisionToken,
@@ -494,6 +496,22 @@ function extractAnswerProbabilities(
       probability: Math.exp(candidate.logprob)
     }))
   };
+}
+
+function pickHighestProbabilityAnswer(
+  probabilities: Partial<Record<Answer, AnswerProbability>>
+): Answer | null {
+  let best: Answer | null = null;
+  let bestProbability = -Infinity;
+
+  for (const [option, value] of Object.entries(probabilities) as Array<[Answer, AnswerProbability]>) {
+    if (value.probability !== null && value.probability > bestProbability) {
+      best = option;
+      bestProbability = value.probability;
+    }
+  }
+
+  return best;
 }
 
 function classifyAnswerToken(token: string): Answer | null {
