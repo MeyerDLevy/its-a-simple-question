@@ -5,8 +5,6 @@ export const MODEL_OPTIONS = [
   { id: "gpt-5.4", label: "GPT-5.4" },
   { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
   { id: "gpt-5.4-nano", label: "GPT-5.4 nano" },
-  { id: "gpt-5", label: "GPT-5" },
-  { id: "gpt-5-mini", label: "GPT-5 mini" },
   { id: "gpt-4.1", label: "GPT-4.1" },
   { id: "gpt-4.1-mini", label: "GPT-4.1 mini" },
   { id: "gpt-4.1-nano", label: "GPT-4.1 nano" },
@@ -34,6 +32,7 @@ export type AnswerResponse = {
     logprob: number;
     probability: number;
   }>;
+  probabilityNote: string | null;
   usage: unknown;
 };
 

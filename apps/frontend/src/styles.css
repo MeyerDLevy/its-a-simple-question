@@ -276,84 +276,6 @@ button:disabled {
   gap: 20px;
 }
 
-.histogram-stack {
-  display: grid;
-  gap: 16px;
-}
-
-.histogram-panel {
-  display: grid;
-  gap: 12px;
-  border: 1px solid #d5ded6;
-  border-radius: 8px;
-  padding: 18px;
-  background: #fffefa;
-}
-
-.histogram-panel h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.distribution-title-yes {
-  color: #12654e;
-}
-
-.distribution-title-no {
-  color: #9b3328;
-}
-
-.histogram {
-  display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: 6px;
-  align-items: end;
-  min-height: 220px;
-  padding-top: 8px;
-}
-
-.histogram-bin {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.histogram-bars {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 2px;
-  height: 180px;
-}
-
-.histogram-bar {
-  width: 100%;
-  min-height: 2px;
-  border-radius: 4px 4px 0 0;
-  cursor: help;
-  transition: opacity 120ms ease;
-}
-
-.histogram-bar:hover {
-  opacity: 0.75;
-}
-
-.yes-bar {
-  background: #1b8d70;
-}
-
-.no-bar {
-  background: #c35a49;
-}
-
-.histogram-label {
-  color: #627268;
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-align: center;
-  line-height: 1.2;
-}
-
 .model-results {
   display: grid;
   gap: 10px;
@@ -381,6 +303,14 @@ button:disabled {
 
 .model-result-card p {
   margin: 0;
+}
+
+.probability-note {
+  margin-top: 6px !important;
+  color: #627268;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .model-result-probs {

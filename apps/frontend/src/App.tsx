@@ -1,5 +1,5 @@
 import { AlertCircle, Loader2, SendHorizontal } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import {
   AnswerResponse,
   MODEL_OPTIONS,
@@ -13,8 +13,6 @@ const EXAMPLES = [
   "Is it wrong to kill another person?",
   "Is there intelligent life on other planets?"
 ];
-
-const BIN_COUNT = 10;
 
 export default function App() {
   const [question, setQuestion] = useState("");
@@ -69,6 +67,16 @@ export default function App() {
         </div>
 
         <form className="question-form" onSubmit={handleSubmit}>
+          <label htmlFor="question">Question</label>
+          <textarea
+            id="question"
+            value={question}
+            maxLength={2000}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="Type a yes/no question..."
+            rows={7}
+          />
+
           <fieldset className="model-control">
             <legend>Models</legend>
             <p className="model-hint">Structured Outputs only. All unchecked by default.</p>
@@ -85,16 +93,6 @@ export default function App() {
               ))}
             </div>
           </fieldset>
-
-          <label htmlFor="question">Question</label>
-          <textarea
-            id="question"
-            value={question}
-            maxLength={2000}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Type a yes/no question..."
-            rows={7}
-          />
 
           <div className="form-actions">
             <span>
@@ -154,18 +152,14 @@ function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoad
         <div className="empty-mark">?</div>
         <div>
           <h2>No question yet</h2>
-          <p>Select at least one model, ask a question, and the probability histogram will appear here.</p>
+          <p>Select at least one model, ask a question, and results will appear here.</p>
         </div>
       </div>
     );
   }
 
-  const successes = results.filter((run): run is Extract<ModelRunResult, { ok: true }> => run.ok);
-
   return (
     <div className="result-content">
-      <ProbabilityHistogram results={successes.map((run) => run.result)} />
-
       <div className="model-results">
         {results.map((run) =>
           run.ok ? <ModelResultCard key={run.model} result={run.result} /> : <ModelErrorCard key={run.model} model={run.model} error={run.error} />
@@ -173,109 +167,6 @@ function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoad
       </div>
     </div>
   );
-}
-
-type DistributionEntry = {
-  model: string;
-  probability: number;
-};
-
-type DistributionBin = {
-  label: string;
-  start: number;
-  end: number;
-  entries: DistributionEntry[];
-};
-
-function ProbabilityHistogram({ results }: { results: AnswerResponse[] }) {
-  const yesBins = useMemo(() => buildDistributionBins(results, "Yes"), [results]);
-  const noBins = useMemo(() => buildDistributionBins(results, "No"), [results]);
-
-  if (results.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="histogram-stack">
-      <FrequencyDistribution title="Yes" bins={yesBins} barClassName="yes-bar" />
-      <FrequencyDistribution title="No" bins={noBins} barClassName="no-bar" />
-    </div>
-  );
-}
-
-function FrequencyDistribution({
-  title,
-  bins,
-  barClassName
-}: {
-  title: "Yes" | "No";
-  bins: DistributionBin[];
-  barClassName: string;
-}) {
-  const maxCount = Math.max(1, ...bins.map((bin) => bin.entries.length));
-  const segmentHeight = 100 / maxCount;
-
-  return (
-    <div className="histogram-panel">
-      <h2 className={title === "Yes" ? "distribution-title-yes" : "distribution-title-no"}>{title}</h2>
-
-      <div
-        className="histogram"
-        role="img"
-        aria-label={`Frequency distribution of ${title} probabilities across models`}
-      >
-        {bins.map((bin) => (
-          <div key={bin.label} className="histogram-bin">
-            <div className="histogram-bars">
-              {bin.entries.map((entry) => (
-                <div
-                  key={`${entry.model}-${entry.probability}`}
-                  className={`histogram-bar ${barClassName}`}
-                  style={{ height: `${segmentHeight}%` }}
-                  title={`${entry.model}: ${formatPercent(entry.probability)}`}
-                />
-              ))}
-            </div>
-            <span className="histogram-label">{bin.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function buildDistributionBins(results: AnswerResponse[], answer: "Yes" | "No"): DistributionBin[] {
-  const bins = Array.from({ length: BIN_COUNT }, (_, index) => {
-    const start = index / BIN_COUNT;
-    const end = (index + 1) / BIN_COUNT;
-    const label = `${Math.round(start * 100)}–${Math.round(end * 100)}%`;
-
-    return {
-      label,
-      start,
-      end,
-      entries: [] as DistributionEntry[]
-    };
-  });
-
-  for (const result of results) {
-    const probability = result.probabilities[answer].probability;
-
-    if (probability === null) {
-      continue;
-    }
-
-    const bin = bins.find(
-      (candidate) =>
-        probability >= candidate.start && (probability < candidate.end || (candidate.end === 1 && probability <= 1))
-    );
-
-    if (bin) {
-      bin.entries.push({ model: result.model, probability });
-    }
-  }
-
-  return bins;
 }
 
 function ModelResultCard({ result }: { result: AnswerResponse }) {
@@ -288,6 +179,7 @@ function ModelResultCard({ result }: { result: AnswerResponse }) {
         <div>
           <h3>{result.model}</h3>
           <p className={result.answer === "Yes" ? "answer-yes" : "answer-no"}>{result.answer}</p>
+          {result.probabilityNote ? <p className="probability-note">{result.probabilityNote}</p> : null}
         </div>
         <div className="model-result-probs">
           <span className="prob-yes">Yes {yesPercent}</span>

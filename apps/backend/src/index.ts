@@ -23,8 +23,6 @@ const AVAILABLE_MODELS = [
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.4-nano",
-  "gpt-5",
-  "gpt-5-mini",
   "gpt-4.1",
   "gpt-4.1-mini",
   "gpt-4.1-nano",
@@ -124,6 +122,16 @@ app.post("/api/answer", async (req, res, next) => {
       questionLength: question.length
     });
 
+    const requestOptions = buildModelRequestOptions(model);
+
+    logInfo("answer:request_options", {
+      requestId,
+      model,
+      supportsLogprobs: requestOptions.supportsLogprobs,
+      reasoningEffort:
+        (requestOptions.apiParams.reasoning as { effort?: string } | undefined)?.effort ?? null
+    });
+
     const response = await openai.responses.create({
       model,
       instructions:
@@ -134,9 +142,7 @@ app.post("/api/answer", async (req, res, next) => {
           content: question
         }
       ],
-      ...(supportsTemperature(model) ? { temperature: 0 } : {}),
-      top_logprobs: 20,
-      include: ["message.output_text.logprobs"],
+      ...requestOptions.apiParams,
       text: {
         format: {
           type: "json_schema",
@@ -186,6 +192,7 @@ app.post("/api/answer", async (req, res, next) => {
       probabilities: probabilityData.probabilities,
       decisionToken: probabilityData.decisionToken,
       topLogprobs: probabilityData.topLogprobs,
+      probabilityNote: requestOptions.probabilityNote,
       usage: response.usage ?? null
     });
   } catch (error) {
@@ -280,8 +287,65 @@ function isAvailableModel(value: unknown): value is ModelId {
   return typeof value === "string" && AVAILABLE_MODELS.includes(value as ModelId);
 }
 
-function supportsTemperature(model: string): boolean {
-  return !model.startsWith("gpt-5");
+function isReasoningModel(model: string): boolean {
+  return model.startsWith("gpt-5");
+}
+
+function supportsReasoningEffortNone(model: string): boolean {
+  if (!isReasoningModel(model)) {
+    return false;
+  }
+
+  // Pre-5.1 GPT-5 models always reason and reject logprobs.
+  if (model === "gpt-5" || model === "gpt-5-mini") {
+    return false;
+  }
+
+  if (model.includes("-pro")) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildModelRequestOptions(model: string): {
+  apiParams: Record<string, unknown>;
+  supportsLogprobs: boolean;
+  probabilityNote: string | null;
+} {
+  if (!isReasoningModel(model)) {
+    return {
+      apiParams: {
+        temperature: 0,
+        top_logprobs: 20,
+        include: ["message.output_text.logprobs"]
+      },
+      supportsLogprobs: true,
+      probabilityNote: null
+    };
+  }
+
+  if (supportsReasoningEffortNone(model)) {
+    return {
+      apiParams: {
+        reasoning: { effort: "none" },
+        temperature: 0,
+        top_logprobs: 20,
+        include: ["message.output_text.logprobs"]
+      },
+      supportsLogprobs: true,
+      probabilityNote: null
+    };
+  }
+
+  return {
+    apiParams: {
+      reasoning: { effort: "minimal" }
+    },
+    supportsLogprobs: false,
+    probabilityNote:
+      "Token probabilities unavailable: this reasoning model does not support reasoning.effort none, so logprobs are blocked."
+  };
 }
 
 function parseStructuredAnswer(outputText: string): { answer: Answer } {
