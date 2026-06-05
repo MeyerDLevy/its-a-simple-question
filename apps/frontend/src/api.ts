@@ -1,15 +1,15 @@
 export type Answer = "Yes" | "No" | "Maybe";
 
 export const MODEL_OPTIONS = [
-  { id: "gpt-5.5", label: "GPT-5.5" },
-  { id: "gpt-5.4", label: "GPT-5.4" },
-  { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
-  { id: "gpt-5.4-nano", label: "GPT-5.4 nano" },
-  { id: "gpt-4.1", label: "GPT-4.1" },
-  { id: "gpt-4.1-mini", label: "GPT-4.1 mini" },
-  { id: "gpt-4.1-nano", label: "GPT-4.1 nano" },
-  { id: "gpt-4o", label: "GPT-4o" },
-  { id: "gpt-4o-mini", label: "GPT-4o mini" }
+  { id: "openai/gpt-4.1", label: "GPT-4.1" },
+  { id: "openai/gpt-4.1-mini", label: "GPT-4.1 mini" },
+  { id: "openai/gpt-4.1-nano", label: "GPT-4.1 nano" },
+  { id: "openai/gpt-4o", label: "GPT-4o" },
+  { id: "openai/gpt-4o-mini", label: "GPT-4o mini" },
+  { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
+  { id: "mistralai/mistral-large", label: "Mistral Large" },
+  { id: "deepseek/deepseek-chat", label: "DeepSeek Chat" },
+  { id: "qwen/qwen-2.5-72b-instruct", label: "Qwen 2.5 72B" }
 ] as const;
 
 export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];

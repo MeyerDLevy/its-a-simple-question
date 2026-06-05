@@ -17,17 +17,16 @@ type AnswerProbability = {
   probability: number | null;
 };
 
-// Models with strict Structured Outputs (json_schema) per OpenAI docs.
 const AVAILABLE_MODELS = [
-  "gpt-5.5",
-  "gpt-5.4",
-  "gpt-5.4-mini",
-  "gpt-5.4-nano",
-  "gpt-4.1",
-  "gpt-4.1-mini",
-  "gpt-4.1-nano",
-  "gpt-4o",
-  "gpt-4o-mini"
+  "openai/gpt-4.1",
+  "openai/gpt-4.1-mini",
+  "openai/gpt-4.1-nano",
+  "openai/gpt-4o",
+  "openai/gpt-4o-mini",
+  "meta-llama/llama-3.3-70b-instruct",
+  "mistralai/mistral-large",
+  "deepseek/deepseek-chat",
+  "qwen/qwen-2.5-72b-instruct"
 ] as const;
 
 type ModelId = (typeof AVAILABLE_MODELS)[number];
@@ -36,14 +35,19 @@ type RequestWithId = express.Request & {
   requestId?: string;
 };
 
-const DEFAULT_MODEL: ModelId = "gpt-4.1-mini";
+const DEFAULT_MODEL: ModelId = "openai/gpt-4o-mini";
 const PORT = Number(process.env.PORT ?? 3001);
-const FALLBACK_MODEL = getFallbackModel(process.env.OPENAI_MODEL);
+const FALLBACK_MODEL = getFallbackModel(process.env.OPENROUTER_MODEL);
 const MAX_QUESTION_LENGTH = 2000;
 
 const app = express();
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "missing-key"
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY || "missing-key",
+  defaultHeaders: {
+    "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "",
+    "X-Title": process.env.OPENROUTER_SITE_NAME ?? "It's a Simple Question"
+  }
 });
 
 const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
@@ -107,9 +111,9 @@ app.post("/api/answer", async (req, res, next) => {
   try {
     const requestId = (req as RequestWithId).requestId ?? null;
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY) {
       logError("answer:missing_api_key", { requestId });
-      res.status(500).json({ error: "OPENAI_API_KEY is not configured on the backend." });
+      res.status(500).json({ error: "OPENROUTER_API_KEY is not configured on the backend." });
       return;
     }
 
@@ -117,54 +121,44 @@ app.post("/api/answer", async (req, res, next) => {
     const model = parseModel(req.body?.model, FALLBACK_MODEL);
     const allowMaybe = parseAllowMaybe(req.body?.allowMaybe);
 
-    logInfo("answer:openai_request:start", {
+    logInfo("answer:openrouter_request:start", {
       requestId,
       model,
       allowMaybe,
       questionLength: question.length
     });
 
-    const requestOptions = buildModelRequestOptions(model);
-
-    logInfo("answer:request_options", {
-      requestId,
-      model,
-      supportsLogprobs: requestOptions.supportsLogprobs,
-      reasoningEffort:
-        (requestOptions.apiParams.reasoning as { effort?: string } | undefined)?.effort ?? null
-    });
-
     const allowedAnswers = getAllowedAnswers(allowMaybe);
 
-    const response = await openai.responses.create({
+    const response = await openai.chat.completions.create({
       model,
-      instructions: buildInstructions(allowMaybe),
-      input: [
-        {
-          role: "user",
-          content: question
-        }
+      temperature: 0,
+      logprobs: true,
+      top_logprobs: 20,
+      messages: [
+        { role: "system", content: buildInstructions(allowMaybe) },
+        { role: "user", content: question }
       ],
-      ...requestOptions.apiParams,
-      text: {
-        format: {
-          type: "json_schema",
+      response_format: {
+        type: "json_schema",
+        json_schema: {
           name: "yes_no_answer",
           strict: true,
           schema: buildAnswerSchema(allowMaybe)
         }
-      }
-    });
+      },
+      provider: { require_parameters: true }
+    } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
-    logInfo("answer:openai_request:finish", {
+    logInfo("answer:openrouter_request:finish", {
       requestId,
       responseId: response.id,
       model: response.model ?? model,
-      outputTokenCount: response.usage?.output_tokens ?? null,
+      outputTokenCount: response.usage?.completion_tokens ?? null,
       totalTokenCount: response.usage?.total_tokens ?? null
     });
 
-    const outputText = response.output_text;
+    const outputText = response.choices[0]?.message?.content ?? "";
     const parsed = parseStructuredAnswer(outputText, allowMaybe);
     const logprobs = collectOutputLogprobs(response);
     const probabilityData = extractAnswerProbabilities(logprobs, parsed.answer, allowedAnswers);
@@ -189,7 +183,7 @@ app.post("/api/answer", async (req, res, next) => {
       probabilities: probabilityData.probabilities,
       decisionToken: probabilityData.decisionToken,
       topLogprobs: probabilityData.topLogprobs,
-      probabilityNote: requestOptions.probabilityNote,
+      probabilityNote: null,
       usage: response.usage ?? null
     });
   } catch (error) {
@@ -284,67 +278,6 @@ function isAvailableModel(value: unknown): value is ModelId {
   return typeof value === "string" && AVAILABLE_MODELS.includes(value as ModelId);
 }
 
-function isReasoningModel(model: string): boolean {
-  return model.startsWith("gpt-5");
-}
-
-function supportsReasoningEffortNone(model: string): boolean {
-  if (!isReasoningModel(model)) {
-    return false;
-  }
-
-  // Pre-5.1 GPT-5 models always reason and reject logprobs.
-  if (model === "gpt-5" || model === "gpt-5-mini") {
-    return false;
-  }
-
-  if (model.includes("-pro")) {
-    return false;
-  }
-
-  return true;
-}
-
-function buildModelRequestOptions(model: string): {
-  apiParams: Record<string, unknown>;
-  supportsLogprobs: boolean;
-  probabilityNote: string | null;
-} {
-  if (!isReasoningModel(model)) {
-    return {
-      apiParams: {
-        temperature: 0,
-        top_logprobs: 20,
-        include: ["message.output_text.logprobs"]
-      },
-      supportsLogprobs: true,
-      probabilityNote: null
-    };
-  }
-
-  if (supportsReasoningEffortNone(model)) {
-    return {
-      apiParams: {
-        reasoning: { effort: "none" },
-        temperature: 0,
-        top_logprobs: 20,
-        include: ["message.output_text.logprobs"]
-      },
-      supportsLogprobs: true,
-      probabilityNote: null
-    };
-  }
-
-  return {
-    apiParams: {
-      reasoning: { effort: "minimal" }
-    },
-    supportsLogprobs: false,
-    probabilityNote:
-      "Token probabilities unavailable: this reasoning model does not support reasoning.effort none, so logprobs are blocked."
-  };
-}
-
 function parseAllowMaybe(value: unknown): boolean {
   return value === true;
 }
@@ -386,51 +319,38 @@ function parseStructuredAnswer(outputText: string, allowMaybe: boolean): { answe
   return { answer: parsed.answer as Answer };
 }
 
-function collectOutputLogprobs(response: OpenAI.Responses.Response): Array<{
+function collectOutputLogprobs(response: OpenAI.Chat.ChatCompletion): Array<{
   token: string;
   logprob: number;
   top_logprobs?: Array<{ token: string; logprob: number }>;
 }> {
-  const output = (response as unknown as { output?: unknown[] }).output ?? [];
+  const content = response.choices[0]?.logprobs?.content ?? [];
   const entries: Array<{
     token: string;
     logprob: number;
     top_logprobs?: Array<{ token: string; logprob: number }>;
   }> = [];
 
-  for (const item of output) {
-    const content = (item as { content?: unknown[] }).content ?? [];
-
-    for (const part of content) {
-      const logprobs = (part as { logprobs?: unknown[] }).logprobs ?? [];
-
-      for (const entry of logprobs) {
-        const token = (entry as { token?: unknown }).token;
-        const logprob = (entry as { logprob?: unknown }).logprob;
-        const topLogprobs = (entry as { top_logprobs?: unknown[] }).top_logprobs;
-
-        if (typeof token === "string" && typeof logprob === "number") {
-          entries.push({
-            token,
-            logprob,
-            top_logprobs: Array.isArray(topLogprobs)
-              ? topLogprobs
-                  .map((candidate) => {
-                    const candidateToken = (candidate as { token?: unknown }).token;
-                    const candidateLogprob = (candidate as { logprob?: unknown }).logprob;
-
-                    if (typeof candidateToken !== "string" || typeof candidateLogprob !== "number") {
-                      return null;
-                    }
-
-                    return { token: candidateToken, logprob: candidateLogprob };
-                  })
-                  .filter((candidate): candidate is { token: string; logprob: number } => candidate !== null)
-              : undefined
-          });
-        }
-      }
+  for (const entry of content) {
+    if (typeof entry.token !== "string" || typeof entry.logprob !== "number") {
+      continue;
     }
+
+    const topLogprobs = (entry.top_logprobs ?? [])
+      .map((candidate) => {
+        if (typeof candidate.token !== "string" || typeof candidate.logprob !== "number") {
+          return null;
+        }
+
+        return { token: candidate.token, logprob: candidate.logprob };
+      })
+      .filter((candidate): candidate is { token: string; logprob: number } => candidate !== null);
+
+    entries.push({
+      token: entry.token,
+      logprob: entry.logprob,
+      top_logprobs: topLogprobs.length > 0 ? topLogprobs : undefined
+    });
   }
 
   return entries;

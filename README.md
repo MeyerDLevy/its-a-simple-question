@@ -2,7 +2,7 @@
 
 A small monorepo with:
 
-- `apps/backend`: Express API that calls the OpenAI Responses API with strict Structured Outputs.
+- `apps/backend`: Express API that calls OpenRouter's Chat Completions API with strict Structured Outputs.
 - `apps/frontend`: Vite React UI with a question input and Yes/No probability display.
 
 The backend constrains the model output to this schema:
@@ -18,7 +18,7 @@ The backend constrains the model output to this schema:
 }
 ```
 
-It also requests `message.output_text.logprobs` and `top_logprobs` from the Responses API, then extracts the log probabilities around the constrained enum token. The displayed probability is a normalized Yes-vs-No token probability from that generation step, not a calibrated truth score.
+It also requests `logprobs` and `top_logprobs` from OpenRouter, then extracts the log probabilities around the constrained enum token. The displayed probability is a normalized Yes-vs-No token probability from that generation step, not a calibrated truth score.
 
 ## Local setup
 
@@ -33,7 +33,7 @@ npm run dev
 Add your API key to `apps/backend/.env`:
 
 ```bash
-OPENAI_API_KEY=sk-...
+OPENROUTER_API_KEY=sk-or-...
 ```
 
 Local URLs:
@@ -51,8 +51,10 @@ Backend service:
 - Build Command: `npm ci && npm run build`
 - Start Command: `npm run start`
 - Variables:
-  - `OPENAI_API_KEY`
-  - `OPENAI_MODEL` optional, defaults to `gpt-4.1-mini`
+  - `OPENROUTER_API_KEY`
+  - `OPENROUTER_MODEL` optional, defaults to `openai/gpt-4o-mini`
+  - `OPENROUTER_SITE_URL` optional, your frontend public URL
+  - `OPENROUTER_SITE_NAME` optional, defaults to `It's a Simple Question`
   - `CORS_ORIGIN` set to the frontend public URL after it is created
 
 Frontend service:

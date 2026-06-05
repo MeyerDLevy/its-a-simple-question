@@ -23,7 +23,7 @@ export default function App() {
   const [selectedModels, setSelectedModels] = useState<Record<ModelId, boolean>>(
     () =>
       Object.fromEntries(
-        MODEL_OPTIONS.map((model) => [model.id, model.id === "gpt-5.5"])
+        MODEL_OPTIONS.map((model) => [model.id, model.id === "openai/gpt-4o-mini"])
       ) as Record<ModelId, boolean>
   );
   const [results, setResults] = useState<ModelRunResult[]>([]);
@@ -123,7 +123,7 @@ export default function App() {
           <fieldset className="model-control">
             <legend>Models</legend>
             <div className="field-label-row">
-              <p className="model-hint">GPT-5.5 selected by default.</p>
+              <p className="model-hint">GPT-4o mini selected by default.</p>
               <span className="field-meta">
                 {activeModels.length} model{activeModels.length === 1 ? "" : "s"} selected
               </span>
