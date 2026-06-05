@@ -63,16 +63,21 @@ export default function App() {
     <main className="app-shell">
       <section className="question-panel" aria-labelledby="app-title">
         <div>
-          <p className="eyebrow">Structured output probe</p>
-          <h1 id="app-title">It's a Simple Question</h1>
+          <p className="eyebrow">Constrained decoding game</p>
+          <h1 id="app-title">It&apos;s a Simple Question...</h1>
           <p className="summary">
-            Ask a binary question. Pick one or more models that support constrained decoding, then compare
-            their Yes/No token probabilities on the right.
+            Ask difficult questions to large language models and see what they really think. This tool uses
+            constrained decoding to force the model to choose between &apos;Yes&apos; or &apos;No&apos; no matter
+            what they are asked. Probabilities of either answer for each model are given in the sidebar on the
+            right.
           </p>
         </div>
 
         <form className="question-form" onSubmit={handleSubmit}>
-          <label htmlFor="question">Question</label>
+          <div className="field-label-row">
+            <label htmlFor="question">Question</label>
+            <span className="field-meta">{question.length}/2000</span>
+          </div>
           <textarea
             id="question"
             value={question}
@@ -107,7 +112,12 @@ export default function App() {
 
           <fieldset className="model-control">
             <legend>Models</legend>
-            <p className="model-hint">GPT-5.5 selected by default.</p>
+            <div className="field-label-row">
+              <p className="model-hint">GPT-5.5 selected by default.</p>
+              <span className="field-meta">
+                {activeModels.length} model{activeModels.length === 1 ? "" : "s"} selected
+              </span>
+            </div>
             <div className="model-grid">
               {MODEL_OPTIONS.map((model) => (
                 <label key={model.id} className="model-checkbox">
@@ -121,10 +131,6 @@ export default function App() {
               ))}
             </div>
           </fieldset>
-
-          <p className="form-meta">
-            {question.length}/2000 · {activeModels.length} model{activeModels.length === 1 ? "" : "s"} selected
-          </p>
         </form>
       </section>
 
