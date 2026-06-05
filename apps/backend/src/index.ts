@@ -23,10 +23,10 @@ const AVAILABLE_MODELS = [
   "openai/gpt-4.1-nano",
   "openai/gpt-4o",
   "openai/gpt-4o-mini",
-  "meta-llama/llama-3.3-70b-instruct",
-  "mistralai/mistral-large",
-  "deepseek/deepseek-chat",
-  "qwen/qwen-2.5-72b-instruct"
+  "deepseek/deepseek-v4-flash",
+  "qwen/qwen3.5-27b",
+  "mistralai/ministral-14b-2512",
+  "google/gemma-4-26b-a4b-it"
 ] as const;
 
 type ModelId = (typeof AVAILABLE_MODELS)[number];

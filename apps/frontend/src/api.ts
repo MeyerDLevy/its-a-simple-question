@@ -6,10 +6,10 @@ export const MODEL_OPTIONS = [
   { id: "openai/gpt-4.1-nano", label: "GPT-4.1 nano" },
   { id: "openai/gpt-4o", label: "GPT-4o" },
   { id: "openai/gpt-4o-mini", label: "GPT-4o mini" },
-  { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
-  { id: "mistralai/mistral-large", label: "Mistral Large" },
-  { id: "deepseek/deepseek-chat", label: "DeepSeek Chat" },
-  { id: "qwen/qwen-2.5-72b-instruct", label: "Qwen 2.5 72B" }
+  { id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+  { id: "qwen/qwen3.5-27b", label: "Qwen 3.5 27B" },
+  { id: "mistralai/ministral-14b-2512", label: "Ministral 14B" },
+  { id: "google/gemma-4-26b-a4b-it", label: "Gemma 4 26B" }
 ] as const;
 
 export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
