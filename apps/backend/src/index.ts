@@ -1,4 +1,5 @@
 import cors from "cors";
+import crypto from "node:crypto";
 import "dotenv/config";
 import express from "express";
 import OpenAI from "openai";
@@ -16,6 +17,10 @@ type AnswerProbability = {
   probability: number | null;
 };
 
+type RequestWithId = express.Request & {
+  requestId?: string;
+};
+
 const DEFAULT_MODEL = "gpt-4.1-mini";
 const PORT = Number(process.env.PORT ?? 3001);
 const MODEL = process.env.OPENAI_MODEL || DEFAULT_MODEL;
@@ -31,15 +36,49 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+app.use((req: RequestWithId, res, next) => {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
+  req.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+
+  logInfo("request:start", {
+    requestId,
+    method: req.method,
+    path: req.path,
+    origin: req.headers.origin ?? null
+  });
+
+  res.on("finish", () => {
+    logInfo("request:finish", {
+      requestId,
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt
+    });
+  });
+
+  next();
+});
+
 app.use(express.json({ limit: "32kb" }));
 app.use(
   cors({
     origin(origin, callback) {
       if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        logInfo("cors:allowed", {
+          origin: origin ?? null,
+          mode: allowedOrigins.length === 0 ? "allow_all" : "allowlist"
+        });
         callback(null, true);
         return;
       }
 
+      logError("cors:blocked", {
+        origin,
+        allowedOrigins
+      });
       callback(new Error(`Origin ${origin} is not allowed by CORS_ORIGIN`));
     }
   })
@@ -51,12 +90,21 @@ app.get("/health", (_req, res) => {
 
 app.post("/api/answer", async (req, res, next) => {
   try {
+    const requestId = (req as RequestWithId).requestId ?? null;
+
     if (!process.env.OPENAI_API_KEY) {
+      logError("answer:missing_api_key", { requestId });
       res.status(500).json({ error: "OPENAI_API_KEY is not configured on the backend." });
       return;
     }
 
     const question = parseQuestion(req.body?.question);
+
+    logInfo("answer:openai_request:start", {
+      requestId,
+      model: MODEL,
+      questionLength: question.length
+    });
 
     const response = await openai.responses.create({
       model: MODEL,
@@ -91,10 +139,26 @@ app.post("/api/answer", async (req, res, next) => {
       }
     });
 
+    logInfo("answer:openai_request:finish", {
+      requestId,
+      responseId: response.id,
+      model: response.model ?? MODEL,
+      outputTokenCount: response.usage?.output_tokens ?? null,
+      totalTokenCount: response.usage?.total_tokens ?? null
+    });
+
     const outputText = response.output_text;
     const parsed = parseStructuredAnswer(outputText);
     const logprobs = collectOutputLogprobs(response);
     const probabilityData = extractAnswerProbabilities(logprobs, parsed.answer);
+
+    logInfo("answer:complete", {
+      requestId,
+      answer: parsed.answer,
+      decisionToken: probabilityData.decisionToken,
+      hasYesProbability: probabilityData.probabilities.Yes.probability !== null,
+      hasNoProbability: probabilityData.probabilities.No.probability !== null
+    });
 
     res.json({
       question,
@@ -107,19 +171,53 @@ app.post("/api/answer", async (req, res, next) => {
       usage: response.usage ?? null
     });
   } catch (error) {
+    logError("answer:error", errorToLog(error, (req as RequestWithId).requestId ?? null));
     next(error);
   }
 });
 
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((error: unknown, req: RequestWithId, res: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : "Unexpected server error";
   const status = message.includes("Question") ? 400 : 500;
-  res.status(status).json({ error: message });
+  logError("request:error_response", {
+    requestId: req.requestId ?? null,
+    statusCode: status,
+    message
+  });
+  res.status(status).json({ error: message, requestId: req.requestId ?? null });
 });
 
 app.listen(PORT, () => {
-  console.log(`Backend listening on port ${PORT}`);
+  logInfo("server:listening", {
+    port: PORT,
+    model: MODEL,
+    corsOrigins: allowedOrigins.length === 0 ? "all" : allowedOrigins
+  });
 });
+
+function logInfo(event: string, data: Record<string, unknown>) {
+  console.log(JSON.stringify({ level: "info", event, ...data }));
+}
+
+function logError(event: string, data: Record<string, unknown>) {
+  console.error(JSON.stringify({ level: "error", event, ...data }));
+}
+
+function errorToLog(error: unknown, requestId: string | null): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      requestId,
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    };
+  }
+
+  return {
+    requestId,
+    message: String(error)
+  };
+}
 
 function parseQuestion(value: unknown): string {
   if (typeof value !== "string") {
