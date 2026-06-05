@@ -1,15 +1,16 @@
 import { AlertCircle, Loader2, SendHorizontal } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { Answer, AnswerResponse, askQuestion } from "./api";
+import { Answer, AnswerResponse, MODEL_OPTIONS, ModelId, askQuestion } from "./api";
 
 const EXAMPLES = [
-  "Is the sky blue on a clear day?",
-  "Is two plus two equal to five?",
-  "Can humans breathe underwater without equipment?"
+  "Does God exist?",
+  "Is it wrong to kill another person?",
+  "Is there intelligent life on other planets?"
 ];
 
 export default function App() {
   const [question, setQuestion] = useState("");
+  const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4.1-mini");
   const [result, setResult] = useState<AnswerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +28,7 @@ export default function App() {
     setError(null);
 
     try {
-      setResult(await askQuestion(question.trim()));
+      setResult(await askQuestion(question.trim(), selectedModel));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Request failed.");
     } finally {
@@ -48,6 +49,21 @@ export default function App() {
         </div>
 
         <form className="question-form" onSubmit={handleSubmit}>
+          <div className="model-control">
+            <label htmlFor="model">Model</label>
+            <select
+              id="model"
+              value={selectedModel}
+              onChange={(event) => setSelectedModel(event.target.value as ModelId)}
+            >
+              {MODEL_OPTIONS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <label htmlFor="question">Question</label>
           <textarea
             id="question"

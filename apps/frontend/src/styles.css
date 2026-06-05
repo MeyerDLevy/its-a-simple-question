@@ -19,6 +19,7 @@ body {
 }
 
 button,
+select,
 textarea {
   font: inherit;
 }
@@ -96,6 +97,29 @@ label {
   font-weight: 700;
 }
 
+.model-control {
+  display: grid;
+  max-width: 340px;
+  gap: 8px;
+}
+
+select {
+  min-height: 44px;
+  border: 1px solid #bdcbbf;
+  border-radius: 8px;
+  outline: none;
+  padding: 0 42px 0 12px;
+  background: #fffefa;
+  color: #102018;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(16, 32, 24, 0.08);
+}
+
+select:focus {
+  border-color: #20735d;
+  box-shadow: 0 0 0 4px rgba(32, 115, 93, 0.16);
+}
+
 textarea {
   width: 100%;
   min-height: 188px;
@@ -106,8 +130,15 @@ textarea {
   padding: 18px;
   background: #fffefa;
   color: #102018;
+  font-size: 1.35rem;
+  font-weight: 800;
   line-height: 1.5;
   box-shadow: 0 1px 2px rgba(16, 32, 24, 0.08);
+}
+
+textarea::placeholder {
+  color: #6d7c73;
+  font-weight: 700;
 }
 
 textarea:focus {
@@ -388,6 +419,10 @@ summary {
   .answer-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .model-control {
+    max-width: none;
   }
 
   .form-actions button {

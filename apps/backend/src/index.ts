@@ -17,13 +17,17 @@ type AnswerProbability = {
   probability: number | null;
 };
 
+const AVAILABLE_MODELS = ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini"] as const;
+
+type ModelId = (typeof AVAILABLE_MODELS)[number];
+
 type RequestWithId = express.Request & {
   requestId?: string;
 };
 
-const DEFAULT_MODEL = "gpt-4.1-mini";
+const DEFAULT_MODEL: ModelId = "gpt-4.1-mini";
 const PORT = Number(process.env.PORT ?? 3001);
-const MODEL = process.env.OPENAI_MODEL || DEFAULT_MODEL;
+const FALLBACK_MODEL = getFallbackModel(process.env.OPENAI_MODEL);
 const MAX_QUESTION_LENGTH = 2000;
 
 const app = express();
@@ -99,15 +103,16 @@ app.post("/api/answer", async (req, res, next) => {
     }
 
     const question = parseQuestion(req.body?.question);
+    const model = parseModel(req.body?.model, FALLBACK_MODEL);
 
     logInfo("answer:openai_request:start", {
       requestId,
-      model: MODEL,
+      model,
       questionLength: question.length
     });
 
     const response = await openai.responses.create({
-      model: MODEL,
+      model,
       instructions:
         "Answer the user's question using only the structured JSON schema. Choose Yes when the answer is more likely yes, otherwise choose No. Do not add explanation.",
       input: [
@@ -142,7 +147,7 @@ app.post("/api/answer", async (req, res, next) => {
     logInfo("answer:openai_request:finish", {
       requestId,
       responseId: response.id,
-      model: response.model ?? MODEL,
+      model: response.model ?? model,
       outputTokenCount: response.usage?.output_tokens ?? null,
       totalTokenCount: response.usage?.total_tokens ?? null
     });
@@ -162,7 +167,7 @@ app.post("/api/answer", async (req, res, next) => {
 
     res.json({
       question,
-      model: response.model ?? MODEL,
+      model: response.model ?? model,
       answer: parsed.answer,
       outputText,
       probabilities: probabilityData.probabilities,
@@ -178,7 +183,7 @@ app.post("/api/answer", async (req, res, next) => {
 
 app.use((error: unknown, req: RequestWithId, res: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : "Unexpected server error";
-  const status = message.includes("Question") ? 400 : 500;
+  const status = message.includes("Question") || message.includes("Model") ? 400 : 500;
   logError("request:error_response", {
     requestId: req.requestId ?? null,
     statusCode: status,
@@ -190,7 +195,8 @@ app.use((error: unknown, req: RequestWithId, res: express.Response, _next: expre
 app.listen(PORT, () => {
   logInfo("server:listening", {
     port: PORT,
-    model: MODEL,
+    defaultModel: FALLBACK_MODEL,
+    availableModels: AVAILABLE_MODELS,
     corsOrigins: allowedOrigins.length === 0 ? "all" : allowedOrigins
   });
 });
@@ -235,6 +241,30 @@ function parseQuestion(value: unknown): string {
   }
 
   return question;
+}
+
+function parseModel(value: unknown, fallback: ModelId): ModelId {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error("Model must be a string.");
+  }
+
+  if (!isAvailableModel(value)) {
+    throw new Error(`Model must be one of: ${AVAILABLE_MODELS.join(", ")}.`);
+  }
+
+  return value;
+}
+
+function getFallbackModel(value: string | undefined): ModelId {
+  return isAvailableModel(value) ? value : DEFAULT_MODEL;
+}
+
+function isAvailableModel(value: unknown): value is ModelId {
+  return typeof value === "string" && AVAILABLE_MODELS.includes(value as ModelId);
 }
 
 function parseStructuredAnswer(outputText: string): { answer: Answer } {
