@@ -1,4 +1,4 @@
-import { AlertCircle, Loader2, SendHorizontal } from "lucide-react";
+import { AlertCircle, Heart, Loader2, SendHorizontal } from "lucide-react";
 import { FormEvent, useState } from "react";
 import {
   Answer,
@@ -14,6 +14,8 @@ const EXAMPLES = [
   "Is it wrong to kill another person?",
   "Is there intelligent life on other planets?"
 ];
+
+const STRIPE_DONATION_URL = "https://donate.stripe.com/your-link-here";
 
 export default function App() {
   const [question, setQuestion] = useState("");
@@ -66,11 +68,16 @@ export default function App() {
           <h1 id="app-title">It&apos;s a Simple Question...</h1>
           <p className="summary">
             Ask difficult questions to large language models and see what they really think. This tool uses
-            constrained decoding to force the model to choose between &apos;Yes&apos; or &apos;No&apos; no matter
-            what they are asked. Probabilities of either answer for each model are given in the sidebar on the
+            constrained decoding to force the model to choose between &apos;Yes&apos; or &apos;No&apos; regardless
+            of what they are asked. Probabilities of either answer are given for each model in the sidebar on the
             right.
           </p>
         </div>
+
+        <a className="donate-button" href={STRIPE_DONATION_URL} target="_blank" rel="noreferrer">
+          <Heart size={16} />
+          Donate
+        </a>
 
         <form className="question-form" onSubmit={handleSubmit}>
           <div className="field-label-row">

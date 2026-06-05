@@ -99,6 +99,41 @@ h2 {
   line-height: 1.65;
 }
 
+.donate-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: flex-start;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.donate-button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff8f8;
+  transform: translateY(-1px);
+}
+
+.donate-button svg {
+  color: var(--accent);
+}
+
+.donate-button:hover svg {
+  color: #fff8f8;
+}
+
 .question-form {
   display: grid;
   gap: 10px;
