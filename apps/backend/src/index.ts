@@ -4,7 +4,7 @@ import "dotenv/config";
 import express from "express";
 import OpenAI from "openai";
 
-type Answer = "Yes" | "No";
+type Answer = "Yes" | "No" | "Maybe";
 
 type LogprobCandidate = {
   token: string;
@@ -115,10 +115,12 @@ app.post("/api/answer", async (req, res, next) => {
 
     const question = parseQuestion(req.body?.question);
     const model = parseModel(req.body?.model, FALLBACK_MODEL);
+    const allowMaybe = parseAllowMaybe(req.body?.allowMaybe);
 
     logInfo("answer:openai_request:start", {
       requestId,
       model,
+      allowMaybe,
       questionLength: question.length
     });
 
@@ -132,10 +134,11 @@ app.post("/api/answer", async (req, res, next) => {
         (requestOptions.apiParams.reasoning as { effort?: string } | undefined)?.effort ?? null
     });
 
+    const allowedAnswers = getAllowedAnswers(allowMaybe);
+
     const response = await openai.responses.create({
       model,
-      instructions:
-        "Answer the user's question using only the structured JSON schema. Choose Yes when the answer is more likely yes, otherwise choose No. Do not add explanation.",
+      instructions: buildInstructions(allowMaybe),
       input: [
         {
           role: "user",
@@ -148,17 +151,7 @@ app.post("/api/answer", async (req, res, next) => {
           type: "json_schema",
           name: "yes_no_answer",
           strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              answer: {
-                type: "string",
-                enum: ["Yes", "No"]
-              }
-            },
-            required: ["answer"],
-            additionalProperties: false
-          }
+          schema: buildAnswerSchema(allowMaybe)
         }
       }
     });
@@ -172,21 +165,23 @@ app.post("/api/answer", async (req, res, next) => {
     });
 
     const outputText = response.output_text;
-    const parsed = parseStructuredAnswer(outputText);
+    const parsed = parseStructuredAnswer(outputText, allowMaybe);
     const logprobs = collectOutputLogprobs(response);
-    const probabilityData = extractAnswerProbabilities(logprobs, parsed.answer);
+    const probabilityData = extractAnswerProbabilities(logprobs, parsed.answer, allowedAnswers);
 
     logInfo("answer:complete", {
       requestId,
       answer: parsed.answer,
       decisionToken: probabilityData.decisionToken,
-      hasYesProbability: probabilityData.probabilities.Yes.probability !== null,
-      hasNoProbability: probabilityData.probabilities.No.probability !== null
+      hasYesProbability: probabilityData.probabilities.Yes?.probability !== null,
+      hasNoProbability: probabilityData.probabilities.No?.probability !== null,
+      hasMaybeProbability: probabilityData.probabilities.Maybe?.probability !== null
     });
 
     res.json({
       question,
       model: response.model ?? model,
+      allowMaybe,
       answer: parsed.answer,
       outputText,
       probabilities: probabilityData.probabilities,
@@ -348,14 +343,45 @@ function buildModelRequestOptions(model: string): {
   };
 }
 
-function parseStructuredAnswer(outputText: string): { answer: Answer } {
-  const parsed = JSON.parse(outputText) as { answer?: unknown };
+function parseAllowMaybe(value: unknown): boolean {
+  return value === true;
+}
 
-  if (parsed.answer !== "Yes" && parsed.answer !== "No") {
+function getAllowedAnswers(allowMaybe: boolean): Answer[] {
+  return allowMaybe ? ["Yes", "No", "Maybe"] : ["Yes", "No"];
+}
+
+function buildInstructions(allowMaybe: boolean): string {
+  if (allowMaybe) {
+    return "Answer the user's question using only the structured JSON schema. Choose Yes when the answer is more likely yes, No when it is more likely no, and Maybe when the question is genuinely uncertain or not clearly yes or no. Do not add explanation.";
+  }
+
+  return "Answer the user's question using only the structured JSON schema. Choose Yes when the answer is more likely yes, otherwise choose No. Do not add explanation.";
+}
+
+function buildAnswerSchema(allowMaybe: boolean) {
+  return {
+    type: "object",
+    properties: {
+      answer: {
+        type: "string",
+        enum: getAllowedAnswers(allowMaybe)
+      }
+    },
+    required: ["answer"],
+    additionalProperties: false
+  };
+}
+
+function parseStructuredAnswer(outputText: string, allowMaybe: boolean): { answer: Answer } {
+  const parsed = JSON.parse(outputText) as { answer?: unknown };
+  const allowedAnswers = getAllowedAnswers(allowMaybe);
+
+  if (!allowedAnswers.includes(parsed.answer as Answer)) {
     throw new Error("Model returned an invalid structured answer.");
   }
 
-  return { answer: parsed.answer };
+  return { answer: parsed.answer as Answer };
 }
 
 function collectOutputLogprobs(response: OpenAI.Responses.Response): Array<{
@@ -410,9 +436,10 @@ function collectOutputLogprobs(response: OpenAI.Responses.Response): Array<{
 
 function extractAnswerProbabilities(
   logprobs: ReturnType<typeof collectOutputLogprobs>,
-  answer: Answer
+  answer: Answer,
+  allowedAnswers: Answer[]
 ): {
-  probabilities: Record<Answer, AnswerProbability>;
+  probabilities: Partial<Record<Answer, AnswerProbability>>;
   decisionToken: string | null;
   topLogprobs: LogprobCandidate[];
 } {
@@ -425,7 +452,7 @@ function extractAnswerProbabilities(
 
   if (!decisionEntry) {
     return {
-      probabilities: emptyProbabilities(),
+      probabilities: emptyProbabilities(allowedAnswers),
       decisionToken: null,
       topLogprobs: []
     };
@@ -436,7 +463,7 @@ function extractAnswerProbabilities(
   for (const candidate of decisionEntry.top_logprobs ?? []) {
     const classified = classifyAnswerToken(candidate.token);
 
-    if (!classified) {
+    if (!classified || !allowedAnswers.includes(classified)) {
       continue;
     }
 
@@ -447,19 +474,19 @@ function extractAnswerProbabilities(
   }
 
   const selectedClass = classifyAnswerToken(decisionEntry.token);
-  if (selectedClass) {
+  if (selectedClass && allowedAnswers.includes(selectedClass)) {
     const existing = candidateMap.get(selectedClass);
     if (existing === undefined || decisionEntry.logprob > existing) {
       candidateMap.set(selectedClass, decisionEntry.logprob);
     }
   }
 
-  const yesLogprob = candidateMap.get("Yes") ?? null;
-  const noLogprob = candidateMap.get("No") ?? null;
-  const probabilities = normalizeBinaryLogprobs(yesLogprob, noLogprob);
+  const logprobValues = Object.fromEntries(
+    allowedAnswers.map((option) => [option, candidateMap.get(option) ?? null])
+  ) as Partial<Record<Answer, number | null>>;
 
   return {
-    probabilities,
+    probabilities: normalizeLogprobs(logprobValues, allowedAnswers),
     decisionToken: decisionEntry.token,
     topLogprobs: (decisionEntry.top_logprobs ?? []).slice(0, 10).map((candidate) => ({
       token: candidate.token,
@@ -480,46 +507,52 @@ function classifyAnswerToken(token: string): Answer | null {
     return "No";
   }
 
+  if (normalized === "Maybe") {
+    return "Maybe";
+  }
+
   return null;
 }
 
-function normalizeBinaryLogprobs(
-  yesLogprob: number | null,
-  noLogprob: number | null
-): Record<Answer, AnswerProbability> {
-  if (yesLogprob === null || noLogprob === null) {
-    return {
-      Yes: {
-        logprob: yesLogprob,
-        probability: yesLogprob === null ? null : Math.exp(yesLogprob)
-      },
-      No: {
-        logprob: noLogprob,
-        probability: noLogprob === null ? null : Math.exp(noLogprob)
-      }
-    };
+function normalizeLogprobs(
+  values: Partial<Record<Answer, number | null>>,
+  allowedAnswers: Answer[]
+): Partial<Record<Answer, AnswerProbability>> {
+  const present = allowedAnswers.filter((option) => values[option] !== null && values[option] !== undefined);
+
+  if (present.length !== allowedAnswers.length) {
+    return Object.fromEntries(
+      allowedAnswers.map((option) => {
+        const logprob = values[option] ?? null;
+        return [
+          option,
+          {
+            logprob,
+            probability: logprob === null ? null : Math.exp(logprob)
+          }
+        ];
+      })
+    );
   }
 
-  const max = Math.max(yesLogprob, noLogprob);
-  const yesExp = Math.exp(yesLogprob - max);
-  const noExp = Math.exp(noLogprob - max);
-  const denominator = yesExp + noExp;
+  const logprobs = allowedAnswers.map((option) => values[option] as number);
+  const max = Math.max(...logprobs);
+  const expValues = logprobs.map((logprob) => Math.exp(logprob - max));
+  const denominator = expValues.reduce((sum, value) => sum + value, 0);
 
-  return {
-    Yes: {
-      logprob: yesLogprob,
-      probability: yesExp / denominator
-    },
-    No: {
-      logprob: noLogprob,
-      probability: noExp / denominator
-    }
-  };
+  return Object.fromEntries(
+    allowedAnswers.map((option, index) => [
+      option,
+      {
+        logprob: logprobs[index],
+        probability: expValues[index] / denominator
+      }
+    ])
+  );
 }
 
-function emptyProbabilities(): Record<Answer, AnswerProbability> {
-  return {
-    Yes: { logprob: null, probability: null },
-    No: { logprob: null, probability: null }
-  };
+function emptyProbabilities(allowedAnswers: Answer[]): Partial<Record<Answer, AnswerProbability>> {
+  return Object.fromEntries(
+    allowedAnswers.map((option) => [option, { logprob: null, probability: null }])
+  );
 }

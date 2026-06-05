@@ -1,6 +1,7 @@
 import { AlertCircle, Loader2, SendHorizontal } from "lucide-react";
 import { FormEvent, useState } from "react";
 import {
+  Answer,
   AnswerResponse,
   MODEL_OPTIONS,
   ModelId,
@@ -16,8 +17,12 @@ const EXAMPLES = [
 
 export default function App() {
   const [question, setQuestion] = useState("");
+  const [allowMaybe, setAllowMaybe] = useState(false);
   const [selectedModels, setSelectedModels] = useState<Record<ModelId, boolean>>(
-    () => Object.fromEntries(MODEL_OPTIONS.map((model) => [model.id, false])) as Record<ModelId, boolean>
+    () =>
+      Object.fromEntries(
+        MODEL_OPTIONS.map((model) => [model.id, model.id === "gpt-5.5"])
+      ) as Record<ModelId, boolean>
   );
   const [results, setResults] = useState<ModelRunResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +46,7 @@ export default function App() {
     setError(null);
 
     try {
-      const runResults = await askQuestions(question.trim(), activeModels);
+      const runResults = await askQuestions(question.trim(), activeModels, allowMaybe);
       setResults(runResults);
 
       if (runResults.every((run) => !run.ok)) {
@@ -74,12 +79,35 @@ export default function App() {
             maxLength={2000}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="Type a yes/no question..."
-            rows={7}
+            rows={5}
           />
+
+          <div className="examples" aria-label="Example questions">
+            {EXAMPLES.map((example) => (
+              <button key={example} type="button" onClick={() => setQuestion(example)}>
+                {example}
+              </button>
+            ))}
+          </div>
+
+          <div className="run-row">
+            <label className="maybe-checkbox">
+              <input
+                type="checkbox"
+                checked={allowMaybe}
+                onChange={(event) => setAllowMaybe(event.target.checked)}
+              />
+              <span>Allow &apos;Maybe&apos; Answer</span>
+            </label>
+            <button type="submit" className="run-button" disabled={!canSubmit}>
+              {isLoading ? <Loader2 className="spin" size={18} /> : <SendHorizontal size={18} />}
+              Run
+            </button>
+          </div>
 
           <fieldset className="model-control">
             <legend>Models</legend>
-            <p className="model-hint">Structured Outputs only. All unchecked by default.</p>
+            <p className="model-hint">GPT-5.5 selected by default.</p>
             <div className="model-grid">
               {MODEL_OPTIONS.map((model) => (
                 <label key={model.id} className="model-checkbox">
@@ -94,24 +122,10 @@ export default function App() {
             </div>
           </fieldset>
 
-          <div className="form-actions">
-            <span>
-              {question.length}/2000 · {activeModels.length} model{activeModels.length === 1 ? "" : "s"} selected
-            </span>
-            <button type="submit" disabled={!canSubmit}>
-              {isLoading ? <Loader2 className="spin" size={18} /> : <SendHorizontal size={18} />}
-              Run
-            </button>
-          </div>
+          <p className="form-meta">
+            {question.length}/2000 · {activeModels.length} model{activeModels.length === 1 ? "" : "s"} selected
+          </p>
         </form>
-
-        <div className="examples" aria-label="Example questions">
-          {EXAMPLES.map((example) => (
-            <button key={example} type="button" onClick={() => setQuestion(example)}>
-              {example}
-            </button>
-          ))}
-        </div>
       </section>
 
       <section className="result-panel" aria-live="polite">
@@ -140,7 +154,7 @@ function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoad
         <Loader2 className="spin" size={24} />
         <div>
           <h2>Running constrained decoding</h2>
-          <p>Waiting for structured Yes/No outputs from the selected models.</p>
+          <p>Waiting for structured outputs from the selected models.</p>
         </div>
       </div>
     );
@@ -170,20 +184,22 @@ function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoad
 }
 
 function ModelResultCard({ result }: { result: AnswerResponse }) {
-  const yesPercent = formatPercent(result.probabilities.Yes.probability);
-  const noPercent = formatPercent(result.probabilities.No.probability);
+  const yesPercent = formatPercent(result.probabilities.Yes?.probability ?? null);
+  const noPercent = formatPercent(result.probabilities.No?.probability ?? null);
+  const maybePercent = formatPercent(result.probabilities.Maybe?.probability ?? null);
 
   return (
     <article className="model-result-card">
       <div className="model-result-header">
         <div>
           <h3>{result.model}</h3>
-          <p className={result.answer === "Yes" ? "answer-yes" : "answer-no"}>{result.answer}</p>
+          <p className={answerClass(result.answer)}>{result.answer}</p>
           {result.probabilityNote ? <p className="probability-note">{result.probabilityNote}</p> : null}
         </div>
         <div className="model-result-probs">
           <span className="prob-yes">Yes {yesPercent}</span>
           <span className="prob-no">No {noPercent}</span>
+          {result.allowMaybe ? <span className="prob-maybe">Maybe {maybePercent}</span> : null}
         </div>
       </div>
     </article>
@@ -197,6 +213,18 @@ function ModelErrorCard({ model, error }: { model: ModelId; error: string }) {
       <p>{error}</p>
     </article>
   );
+}
+
+function answerClass(answer: Answer) {
+  if (answer === "Yes") {
+    return "answer-yes";
+  }
+
+  if (answer === "No") {
+    return "answer-no";
+  }
+
+  return "answer-maybe";
 }
 
 function formatPercent(value: number | null) {

@@ -151,15 +151,15 @@ label {
 
 textarea {
   width: 100%;
-  min-height: 188px;
+  min-height: 132px;
   resize: vertical;
   border: 1px solid #bdcbbf;
   border-radius: 8px;
   outline: none;
-  padding: 18px;
+  padding: 14px;
   background: #fffefa;
   color: #102018;
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 800;
   line-height: 1.5;
   box-shadow: 0 1px 2px rgba(16, 32, 24, 0.08);
@@ -175,14 +175,40 @@ textarea:focus {
   box-shadow: 0 0 0 4px rgba(32, 115, 93, 0.16);
 }
 
-.form-actions {
+.run-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
-.form-actions span {
+.maybe-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid #cad6cd;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fffefa;
+  color: #2d4237;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.maybe-checkbox:has(input:checked) {
+  border-color: #7b4fa8;
+  background: #f6f0fb;
+}
+
+.maybe-checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #7b4fa8;
+}
+
+.form-meta {
+  margin: 0;
   color: #627268;
   font-size: 0.88rem;
 }
@@ -207,14 +233,14 @@ button:disabled {
   opacity: 0.55;
 }
 
-.form-actions button {
+.run-button {
   min-width: 112px;
   background: #16483c;
   color: #ffffff;
   font-weight: 800;
 }
 
-.form-actions button:not(:disabled):hover {
+.run-button:not(:disabled):hover {
   background: #0f382e;
   transform: translateY(-1px);
 }
@@ -223,6 +249,7 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin-top: 2px;
 }
 
 .examples button {
@@ -329,6 +356,10 @@ button:disabled {
   color: #9b3328;
 }
 
+.prob-maybe {
+  color: #7b4fa8;
+}
+
 .model-result-error {
   border-color: #e0b5ae;
   color: #7b2e24;
@@ -343,6 +374,13 @@ button:disabled {
 
 .answer-no {
   color: #9b3328;
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.answer-maybe {
+  color: #7b4fa8;
   font-size: 1.4rem;
   font-weight: 800;
   line-height: 1;
@@ -455,7 +493,7 @@ summary {
     padding: 18px;
   }
 
-  .form-actions,
+  .run-row,
   .model-result-header {
     align-items: stretch;
     flex-direction: column;
@@ -465,7 +503,7 @@ summary {
     grid-template-columns: 1fr;
   }
 
-  .form-actions button {
+  .run-button {
     width: 100%;
   }
 
