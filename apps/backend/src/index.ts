@@ -17,7 +17,20 @@ type AnswerProbability = {
   probability: number | null;
 };
 
-const AVAILABLE_MODELS = ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini"] as const;
+// Models with strict Structured Outputs (json_schema) per OpenAI docs.
+const AVAILABLE_MODELS = [
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.4-nano",
+  "gpt-5",
+  "gpt-5-mini",
+  "gpt-4.1",
+  "gpt-4.1-mini",
+  "gpt-4.1-nano",
+  "gpt-4o",
+  "gpt-4o-mini"
+] as const;
 
 type ModelId = (typeof AVAILABLE_MODELS)[number];
 

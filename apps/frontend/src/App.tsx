@@ -1,6 +1,12 @@
 import { AlertCircle, Loader2, SendHorizontal } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { Answer, AnswerResponse, MODEL_OPTIONS, ModelId, askQuestion } from "./api";
+import {
+  AnswerResponse,
+  MODEL_OPTIONS,
+  ModelId,
+  ModelRunResult,
+  askQuestions
+} from "./api";
 
 const EXAMPLES = [
   "Does God exist?",
@@ -8,14 +14,23 @@ const EXAMPLES = [
   "Is there intelligent life on other planets?"
 ];
 
+const BIN_COUNT = 10;
+
 export default function App() {
   const [question, setQuestion] = useState("");
-  const [selectedModel, setSelectedModel] = useState<ModelId>("gpt-4.1-mini");
-  const [result, setResult] = useState<AnswerResponse | null>(null);
+  const [selectedModels, setSelectedModels] = useState<Record<ModelId, boolean>>(
+    () => Object.fromEntries(MODEL_OPTIONS.map((model) => [model.id, false])) as Record<ModelId, boolean>
+  );
+  const [results, setResults] = useState<ModelRunResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const canSubmit = question.trim().length > 0 && !isLoading;
+  const activeModels = MODEL_OPTIONS.filter((model) => selectedModels[model.id]).map((model) => model.id);
+  const canSubmit = question.trim().length > 0 && activeModels.length > 0 && !isLoading;
+
+  function toggleModel(modelId: ModelId) {
+    setSelectedModels((current) => ({ ...current, [modelId]: !current[modelId] }));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,7 +43,12 @@ export default function App() {
     setError(null);
 
     try {
-      setResult(await askQuestion(question.trim(), selectedModel));
+      const runResults = await askQuestions(question.trim(), activeModels);
+      setResults(runResults);
+
+      if (runResults.every((run) => !run.ok)) {
+        setError(runResults.map((run) => `${run.model}: ${run.error}`).join(" "));
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Request failed.");
     } finally {
@@ -43,26 +63,28 @@ export default function App() {
           <p className="eyebrow">Structured output probe</p>
           <h1 id="app-title">It's a Simple Question</h1>
           <p className="summary">
-            Ask a binary question. The backend constrains the model to a strict Yes or No JSON enum
-            and returns the output token probabilities.
+            Ask a binary question. Pick one or more models that support constrained decoding, then compare
+            their Yes/No token probabilities on the right.
           </p>
         </div>
 
         <form className="question-form" onSubmit={handleSubmit}>
-          <div className="model-control">
-            <label htmlFor="model">Model</label>
-            <select
-              id="model"
-              value={selectedModel}
-              onChange={(event) => setSelectedModel(event.target.value as ModelId)}
-            >
+          <fieldset className="model-control">
+            <legend>Models</legend>
+            <p className="model-hint">Structured Outputs only. All unchecked by default.</p>
+            <div className="model-grid">
               {MODEL_OPTIONS.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
+                <label key={model.id} className="model-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedModels[model.id]}
+                    onChange={() => toggleModel(model.id)}
+                  />
+                  <span>{model.label}</span>
+                </label>
               ))}
-            </select>
-          </div>
+            </div>
+          </fieldset>
 
           <label htmlFor="question">Question</label>
           <textarea
@@ -75,7 +97,9 @@ export default function App() {
           />
 
           <div className="form-actions">
-            <span>{question.length}/2000</span>
+            <span>
+              {question.length}/2000 · {activeModels.length} model{activeModels.length === 1 ? "" : "s"} selected
+            </span>
             <button type="submit" disabled={!canSubmit}>
               {isLoading ? <Loader2 className="spin" size={18} /> : <SendHorizontal size={18} />}
               Run
@@ -93,7 +117,7 @@ export default function App() {
       </section>
 
       <section className="result-panel" aria-live="polite">
-        {error ? <ErrorState message={error} /> : <ResultState result={result} isLoading={isLoading} />}
+        {error ? <ErrorState message={error} /> : <ResultState results={results} isLoading={isLoading} />}
       </section>
     </main>
   );
@@ -111,103 +135,156 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function ResultState({ result, isLoading }: { result: AnswerResponse | null; isLoading: boolean }) {
+function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoading: boolean }) {
   if (isLoading) {
     return (
       <div className="state-message">
         <Loader2 className="spin" size={24} />
         <div>
           <h2>Running constrained decoding</h2>
-          <p>Waiting for the structured Yes/No output.</p>
+          <p>Waiting for structured Yes/No outputs from the selected models.</p>
         </div>
       </div>
     );
   }
 
-  if (!result) {
+  if (results.length === 0) {
     return (
       <div className="state-message">
         <div className="empty-mark">?</div>
         <div>
           <h2>No question yet</h2>
-          <p>The result will show the selected answer and token-level probabilities.</p>
+          <p>Select at least one model, ask a question, and the probability histogram will appear here.</p>
         </div>
       </div>
     );
   }
 
+  const successes = results.filter((run): run is Extract<ModelRunResult, { ok: true }> => run.ok);
+
   return (
     <div className="result-content">
-      <div className="answer-header">
-        <span>Answer</span>
-        <strong className={result.answer === "Yes" ? "answer-yes" : "answer-no"}>{result.answer}</strong>
+      <ProbabilityHistogram results={successes.map((run) => run.result)} />
+
+      <div className="model-results">
+        {results.map((run) =>
+          run.ok ? <ModelResultCard key={run.model} result={run.result} /> : <ModelErrorCard key={run.model} model={run.model} error={run.error} />
+        )}
       </div>
-
-      <ProbabilityBar answer="Yes" result={result} />
-      <ProbabilityBar answer="No" result={result} />
-
-      <dl className="metadata-grid">
-        <div>
-          <dt>Model</dt>
-          <dd>{result.model}</dd>
-        </div>
-        <div>
-          <dt>Decision token</dt>
-          <dd>{result.decisionToken ?? "Unavailable"}</dd>
-        </div>
-      </dl>
-
-      <details>
-        <summary>Raw structured output</summary>
-        <pre>{result.outputText}</pre>
-      </details>
-
-      <TopLogprobs result={result} />
     </div>
   );
 }
 
-function ProbabilityBar({ answer, result }: { answer: Answer; result: AnswerResponse }) {
-  const value = result.probabilities[answer].probability;
-  const percent = value === null ? null : Math.max(0, Math.min(100, value * 100));
+function ProbabilityHistogram({ results }: { results: AnswerResponse[] }) {
+  const bins = useMemo(() => buildProbabilityBins(results), [results]);
 
-  return (
-    <div className="probability-row">
-      <div className="probability-label">
-        <span>{answer}</span>
-        <strong>{percent === null ? "Unavailable" : `${percent.toFixed(2)}%`}</strong>
-      </div>
-      <div className="bar-track" aria-hidden="true">
-        <div className={answer === "Yes" ? "bar-fill yes-fill" : "bar-fill no-fill"} style={{ width: `${percent ?? 0}%` }} />
-      </div>
-      <code>logprob {formatLogprob(result.probabilities[answer].logprob)}</code>
-    </div>
-  );
-}
-
-function TopLogprobs({ result }: { result: AnswerResponse }) {
-  const rows = useMemo(() => result.topLogprobs.slice(0, 6), [result.topLogprobs]);
-
-  if (rows.length === 0) {
+  if (results.length === 0) {
     return null;
   }
 
+  const maxCount = Math.max(1, ...bins.flatMap((bin) => [bin.yesCount, bin.noCount]));
+
   return (
-    <details>
-      <summary>Top token logprobs</summary>
-      <div className="token-list">
-        {rows.map((row, index) => (
-          <div key={`${row.token}-${index}`}>
-            <code>{JSON.stringify(row.token)}</code>
-            <span>{formatLogprob(row.logprob)}</span>
-            <span>{(row.probability * 100).toFixed(2)}%</span>
+    <div className="histogram-panel">
+      <div className="histogram-header">
+        <h2>Probability distribution</h2>
+        <p>{results.length} model run{results.length === 1 ? "" : "s"}</p>
+      </div>
+
+      <div className="histogram-legend">
+        <span className="legend-yes">Yes</span>
+        <span className="legend-no">No</span>
+      </div>
+
+      <div className="histogram" role="img" aria-label="Overlaid frequency distribution of Yes and No probabilities">
+        {bins.map((bin) => (
+          <div key={bin.label} className="histogram-bin">
+            <div className="histogram-bars">
+              <div
+                className="histogram-bar yes-bar"
+                style={{ height: `${(bin.yesCount / maxCount) * 100}%` }}
+                title={`Yes: ${bin.yesCount} in ${bin.label}`}
+              />
+              <div
+                className="histogram-bar no-bar"
+                style={{ height: `${(bin.noCount / maxCount) * 100}%` }}
+                title={`No: ${bin.noCount} in ${bin.label}`}
+              />
+            </div>
+            <span className="histogram-label">{bin.label}</span>
           </div>
         ))}
       </div>
-    </details>
+    </div>
   );
 }
 
-function formatLogprob(value: number | null) {
-  return value === null ? "n/a" : value.toFixed(4);
+function buildProbabilityBins(results: AnswerResponse[]) {
+  const bins = Array.from({ length: BIN_COUNT }, (_, index) => {
+    const start = index / BIN_COUNT;
+    const end = (index + 1) / BIN_COUNT;
+    const label = `${Math.round(start * 100)}–${Math.round(end * 100)}%`;
+
+    return {
+      label,
+      start,
+      end,
+      yesCount: 0,
+      noCount: 0
+    };
+  });
+
+  for (const result of results) {
+    const yesProbability = result.probabilities.Yes.probability;
+    const noProbability = result.probabilities.No.probability;
+
+    if (yesProbability !== null) {
+      const yesBin = bins.find((bin) => yesProbability >= bin.start && (yesProbability < bin.end || (bin.end === 1 && yesProbability <= 1)));
+      if (yesBin) {
+        yesBin.yesCount += 1;
+      }
+    }
+
+    if (noProbability !== null) {
+      const noBin = bins.find((bin) => noProbability >= bin.start && (noProbability < bin.end || (bin.end === 1 && noProbability <= 1)));
+      if (noBin) {
+        noBin.noCount += 1;
+      }
+    }
+  }
+
+  return bins;
+}
+
+function ModelResultCard({ result }: { result: AnswerResponse }) {
+  const yesPercent = formatPercent(result.probabilities.Yes.probability);
+  const noPercent = formatPercent(result.probabilities.No.probability);
+
+  return (
+    <article className="model-result-card">
+      <div className="model-result-header">
+        <div>
+          <h3>{result.model}</h3>
+          <p className={result.answer === "Yes" ? "answer-yes" : "answer-no"}>{result.answer}</p>
+        </div>
+        <div className="model-result-probs">
+          <span className="prob-yes">Yes {yesPercent}</span>
+          <span className="prob-no">No {noPercent}</span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ModelErrorCard({ model, error }: { model: ModelId; error: string }) {
+  return (
+    <article className="model-result-card model-result-error">
+      <h3>{model}</h3>
+      <p>{error}</p>
+    </article>
+  );
+}
+
+function formatPercent(value: number | null) {
+  return value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
 }
