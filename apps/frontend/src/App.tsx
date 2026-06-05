@@ -63,7 +63,6 @@ export default function App() {
     <main className="app-shell">
       <section className="question-panel" aria-labelledby="app-title">
         <div>
-          <p className="eyebrow">Constrained decoding game</p>
           <h1 id="app-title">It&apos;s a Simple Question...</h1>
           <p className="summary">
             Ask difficult questions to large language models and see what they really think. This tool uses
