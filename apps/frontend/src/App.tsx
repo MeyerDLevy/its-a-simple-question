@@ -1,4 +1,4 @@
-import { AlertCircle, Heart, Loader2, SendHorizontal } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, Heart, Loader2, SendHorizontal } from "lucide-react";
 import { FormEvent, useState } from "react";
 import {
   Answer,
@@ -12,6 +12,9 @@ type ModelRunState =
   | { model: ModelId; status: "pending" }
   | { model: ModelId; status: "ok"; result: AnswerResponse }
   | { model: ModelId; status: "error"; error: string };
+
+type SortField = "yes" | "no" | "provider";
+type SortState = { field: SortField; direction: "asc" | "desc" } | null;
 
 const MODEL_LABELS = Object.fromEntries(MODEL_OPTIONS.map((model) => [model.id, model.label])) as Record<
   ModelId,
@@ -36,6 +39,7 @@ export default function App() {
       ) as Record<ModelId, boolean>
   );
   const [runs, setRuns] = useState<ModelRunState[]>([]);
+  const [sort, setSort] = useState<SortState>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -169,7 +173,11 @@ export default function App() {
       </section>
 
       <section className="result-panel" aria-live="polite">
-        {error ? <ErrorState message={error} /> : <ResultState runs={runs} allowMaybe={allowMaybe} />}
+        {error ? (
+          <ErrorState message={error} />
+        ) : (
+          <ResultState runs={runs} allowMaybe={allowMaybe} sort={sort} setSort={setSort} />
+        )}
       </section>
     </main>
   );
@@ -187,7 +195,17 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function ResultState({ runs, allowMaybe }: { runs: ModelRunState[]; allowMaybe: boolean }) {
+function ResultState({
+  runs,
+  allowMaybe,
+  sort,
+  setSort
+}: {
+  runs: ModelRunState[];
+  allowMaybe: boolean;
+  sort: SortState;
+  setSort: (sort: SortState) => void;
+}) {
   if (runs.length === 0) {
     return (
       <div className="state-message">
@@ -200,10 +218,13 @@ function ResultState({ runs, allowMaybe }: { runs: ModelRunState[]; allowMaybe: 
     );
   }
 
+  const sortedRuns = sortRuns(runs, sort);
+
   return (
     <div className="result-content">
+      <SortControls sort={sort} setSort={setSort} />
       <div className="model-results">
-        {runs.map((run) => {
+        {sortedRuns.map((run) => {
           if (run.status === "pending") {
             return <ModelPendingCard key={run.model} model={run.model} allowMaybe={allowMaybe} />;
           }
@@ -217,6 +238,123 @@ function ResultState({ runs, allowMaybe }: { runs: ModelRunState[]; allowMaybe: 
       </div>
     </div>
   );
+}
+
+function SortControls({
+  sort,
+  setSort
+}: {
+  sort: SortState;
+  setSort: (sort: SortState) => void;
+}) {
+  return (
+    <div className="sort-toolbar" aria-label="Sort results">
+      <SortGroup
+        label="Yes"
+        labelClassName="prob-yes"
+        field="yes"
+        sort={sort}
+        setSort={setSort}
+      />
+      <SortGroup
+        label="No"
+        labelClassName="prob-no"
+        field="no"
+        sort={sort}
+        setSort={setSort}
+      />
+      <SortGroup
+        label="Provider"
+        labelClassName="sort-label-provider"
+        field="provider"
+        sort={sort}
+        setSort={setSort}
+      />
+    </div>
+  );
+}
+
+function SortGroup({
+  label,
+  labelClassName,
+  field,
+  sort,
+  setSort
+}: {
+  label: string;
+  labelClassName: string;
+  field: SortField;
+  sort: SortState;
+  setSort: (sort: SortState) => void;
+}) {
+  return (
+    <div className="sort-group">
+      <span className={labelClassName}>{label}</span>
+      <div className="sort-arrows">
+        <button
+          type="button"
+          className={`sort-arrow${sort?.field === field && sort.direction === "asc" ? " is-active" : ""}`}
+          aria-label={`Sort by ${label} ascending`}
+          onClick={() => setSort({ field, direction: "asc" })}
+        >
+          <ArrowUp size={14} />
+        </button>
+        <button
+          type="button"
+          className={`sort-arrow${sort?.field === field && sort.direction === "desc" ? " is-active" : ""}`}
+          aria-label={`Sort by ${label} descending`}
+          onClick={() => setSort({ field, direction: "desc" })}
+        >
+          <ArrowDown size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function runProbability(run: ModelRunState, answer: "Yes" | "No") {
+  if (run.status !== "ok") {
+    return null;
+  }
+
+  return run.result.probabilities[answer]?.probability ?? null;
+}
+
+function runProvider(run: ModelRunState) {
+  return run.model.split("/")[0];
+}
+
+function sortRuns(runs: ModelRunState[], sort: SortState) {
+  if (!sort) {
+    return runs;
+  }
+
+  const { field, direction } = sort;
+  const sign = direction === "asc" ? 1 : -1;
+
+  return [...runs].sort((left, right) => {
+    if (field === "provider") {
+      return sign * runProvider(left).localeCompare(runProvider(right));
+    }
+
+    const answer = field === "yes" ? "Yes" : "No";
+    const leftProb = runProbability(left, answer);
+    const rightProb = runProbability(right, answer);
+
+    if (leftProb === null && rightProb === null) {
+      return 0;
+    }
+
+    if (leftProb === null) {
+      return 1;
+    }
+
+    if (rightProb === null) {
+      return -1;
+    }
+
+    return sign * (leftProb - rightProb);
+  });
 }
 
 function ModelPendingCard({ model, allowMaybe }: { model: ModelId; allowMaybe: boolean }) {

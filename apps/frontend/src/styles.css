@@ -377,6 +377,58 @@ button:disabled {
   gap: 20px;
 }
 
+.sort-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sort-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 8px 0 12px;
+  background: var(--surface);
+}
+
+.sort-group span {
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.sort-label-provider {
+  color: var(--text-muted);
+}
+
+.sort-arrows {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.sort-arrow {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+}
+
+.sort-arrow:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sort-arrow.is-active {
+  border-color: var(--accent);
+  background: var(--surface-checked);
+  color: var(--text);
+}
+
 .model-results {
   display: grid;
   gap: 10px;
