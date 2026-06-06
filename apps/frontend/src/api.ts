@@ -3,14 +3,16 @@ export type Answer = "Yes" | "No" | "Maybe";
 export const MODEL_OPTIONS = [
   { id: "openai/gpt-4o", label: "GPT-4o" },
   { id: "openai/gpt-4o-mini", label: "GPT-4o mini" },
-  { id: "openai/gpt-4-turbo", label: "GPT-4 Turbo" },
+  { id: "openai/gpt-chat-latest", label: "GPT Chat Latest" },
   { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B" },
   { id: "mistralai/ministral-14b-2512", label: "Ministral 14B" },
   { id: "google/gemma-4-26b-a4b-it", label: "Gemma 4 26B" },
   { id: "google/gemma-4-31b-it", label: "Gemma 4 31B" },
   { id: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
   { id: "qwen/qwen3.7-plus", label: "Qwen 3.7 Plus" },
-  { id: "x-ai/grok-build-0.1", label: "Grok Build 0.1" }
+  { id: "minimax/minimax-m2.5", label: "MiniMax M2.5" },
+  { id: "x-ai/grok-4.20", label: "Grok 4.20" },
+  { id: "z-ai/glm-4.7", label: "GLM 4.7" }
 ] as const;
 
 export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
