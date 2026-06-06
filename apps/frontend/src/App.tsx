@@ -5,9 +5,18 @@ import {
   AnswerResponse,
   MODEL_OPTIONS,
   ModelId,
-  ModelRunResult,
-  askQuestions
+  askQuestion
 } from "./api";
+
+type ModelRunState =
+  | { model: ModelId; status: "pending" }
+  | { model: ModelId; status: "ok"; result: AnswerResponse }
+  | { model: ModelId; status: "error"; error: string };
+
+const MODEL_LABELS = Object.fromEntries(MODEL_OPTIONS.map((model) => [model.id, model.label])) as Record<
+  ModelId,
+  string
+>;
 
 const EXAMPLES = [
   "Does God exist?",
@@ -26,7 +35,7 @@ export default function App() {
         MODEL_OPTIONS.map((model) => [model.id, model.id === "openai/gpt-4o-mini"])
       ) as Record<ModelId, boolean>
   );
-  const [results, setResults] = useState<ModelRunResult[]>([]);
+  const [runs, setRuns] = useState<ModelRunState[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -46,19 +55,34 @@ export default function App() {
 
     setIsLoading(true);
     setError(null);
+    setRuns(activeModels.map((model) => ({ model, status: "pending" as const })));
 
-    try {
-      const runResults = await askQuestions(question.trim(), activeModels, allowMaybe);
-      setResults(runResults);
+    const trimmedQuestion = question.trim();
+    const outcomes = await Promise.all(
+      activeModels.map(async (model) => {
+        try {
+          const result = await askQuestion(trimmedQuestion, model, allowMaybe);
+          setRuns((current) =>
+            current.map((run) => (run.model === model ? { model, status: "ok" as const, result } : run))
+          );
+          return { model, status: "ok" as const, result };
+        } catch (runError) {
+          const runErrorMessage = runError instanceof Error ? runError.message : "Request failed.";
+          setRuns((current) =>
+            current.map((run) =>
+              run.model === model ? { model, status: "error" as const, error: runErrorMessage } : run
+            )
+          );
+          return { model, status: "error" as const, error: runErrorMessage };
+        }
+      })
+    );
 
-      if (runResults.every((run) => !run.ok)) {
-        setError(runResults.map((run) => `${run.model}: ${run.error}`).join(" "));
-      }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Request failed.");
-    } finally {
-      setIsLoading(false);
+    if (outcomes.every((run) => run.status === "error")) {
+      setError(outcomes.map((run) => `${run.model}: ${run.error}`).join(" "));
     }
+
+    setIsLoading(false);
   }
 
   return (
@@ -145,7 +169,7 @@ export default function App() {
       </section>
 
       <section className="result-panel" aria-live="polite">
-        {error ? <ErrorState message={error} /> : <ResultState results={results} isLoading={isLoading} />}
+        {error ? <ErrorState message={error} /> : <ResultState runs={runs} allowMaybe={allowMaybe} />}
       </section>
     </main>
   );
@@ -163,20 +187,8 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoading: boolean }) {
-  if (isLoading) {
-    return (
-      <div className="state-message">
-        <Loader2 className="spin" size={24} />
-        <div>
-          <h2>Running constrained decoding</h2>
-          <p>Waiting for structured outputs from the selected models.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (results.length === 0) {
+function ResultState({ runs, allowMaybe }: { runs: ModelRunState[]; allowMaybe: boolean }) {
+  if (runs.length === 0) {
     return (
       <div className="state-message">
         <div className="empty-mark">?</div>
@@ -191,11 +203,37 @@ function ResultState({ results, isLoading }: { results: ModelRunResult[]; isLoad
   return (
     <div className="result-content">
       <div className="model-results">
-        {results.map((run) =>
-          run.ok ? <ModelResultCard key={run.model} result={run.result} /> : <ModelErrorCard key={run.model} model={run.model} error={run.error} />
-        )}
+        {runs.map((run) => {
+          if (run.status === "pending") {
+            return <ModelPendingCard key={run.model} model={run.model} allowMaybe={allowMaybe} />;
+          }
+
+          if (run.status === "ok") {
+            return <ModelResultCard key={run.model} result={run.result} />;
+          }
+
+          return <ModelErrorCard key={run.model} model={run.model} error={run.error} />;
+        })}
       </div>
     </div>
+  );
+}
+
+function ModelPendingCard({ model, allowMaybe }: { model: ModelId; allowMaybe: boolean }) {
+  return (
+    <article className="model-result-card model-result-pending">
+      <div className="model-result-header">
+        <div>
+          <h3>{MODEL_LABELS[model]}</h3>
+          <Loader2 className="spin model-result-loading" size={24} aria-label="Loading" />
+        </div>
+        <div className="model-result-probs">
+          <span className="prob-yes">Yes</span>
+          <span className="prob-no">No</span>
+          {allowMaybe ? <span className="prob-maybe">Maybe</span> : null}
+        </div>
+      </div>
+    </article>
   );
 }
 
