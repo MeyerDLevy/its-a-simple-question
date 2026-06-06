@@ -19,7 +19,6 @@ type AnswerProbability = {
 const AVAILABLE_MODELS = [
   "openai/gpt-4o",
   "openai/gpt-4o-mini",
-  "openai/gpt-chat-latest",
   "openai/gpt-oss-120b",
   "mistralai/ministral-14b-2512",
   "google/gemma-4-26b-a4b-it",
@@ -27,7 +26,6 @@ const AVAILABLE_MODELS = [
   "deepseek/deepseek-v4-pro",
   "qwen/qwen3.7-plus",
   "minimax/minimax-m2.5",
-  "x-ai/grok-4.20",
   "z-ai/glm-4.7"
 ] as const;
 
