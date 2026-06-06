@@ -193,12 +193,32 @@ app.post("/api/answer", async (req, res, next) => {
 app.use((error: unknown, req: RequestWithId, res: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : "Unexpected server error";
   const status = message.includes("Question") || message.includes("Model") ? 400 : 500;
+  const upstreamStatus =
+    error instanceof Error && "upstreamStatus" in error
+      ? (error as Error & { upstreamStatus?: number }).upstreamStatus ?? null
+      : null;
+  const upstreamError =
+    error instanceof Error && "upstreamError" in error
+      ? (error as Error & { upstreamError?: unknown }).upstreamError ?? null
+      : null;
+  const model = typeof req.body?.model === "string" ? req.body.model : null;
+
   logError("request:error_response", {
     requestId: req.requestId ?? null,
     statusCode: status,
+    model,
+    upstreamStatus,
+    upstreamError,
     message
   });
-  res.status(status).json({ error: message, requestId: req.requestId ?? null });
+
+  res.status(status).json({
+    error: message,
+    requestId: req.requestId ?? null,
+    model,
+    upstreamStatus,
+    upstreamError
+  });
 });
 
 app.listen(PORT, () => {
@@ -339,7 +359,14 @@ async function createOpenRouterCompletion(body: Record<string, unknown>): Promis
   const payload = (await response.json()) as OpenRouterChatResponse;
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? `OpenRouter request failed (${response.status}).`);
+    const message = payload.error?.message ?? `OpenRouter request failed (${response.status}).`;
+    const err = new Error(message) as Error & {
+      upstreamStatus?: number;
+      upstreamError?: unknown;
+    };
+    err.upstreamStatus = response.status;
+    err.upstreamError = payload.error ?? payload;
+    throw err;
   }
 
   return payload;

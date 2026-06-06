@@ -43,26 +43,57 @@ export type ModelRunResult =
   | { model: ModelId; ok: true; result: AnswerResponse }
   | { model: ModelId; ok: false; error: string };
 
+type ApiErrorPayload = {
+  error?: string;
+  requestId?: string | null;
+  model?: string;
+  upstreamStatus?: number | null;
+};
+
 export async function askQuestion(
   question: string,
   model: ModelId,
   allowMaybe: boolean
 ): Promise<AnswerResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/answer`, {
+  const requestBody = { question, model, allowMaybe };
+  const url = `${apiBaseUrl}/api/answer`;
+
+  console.log(`[answer] ${model} → POST ${url}`, requestBody);
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ question, model, allowMaybe })
+    body: JSON.stringify(requestBody)
   });
 
-  const payload = (await response.json()) as AnswerResponse | { error?: string };
+  const payload = (await response.json()) as AnswerResponse | ApiErrorPayload;
+  const requestId = response.headers.get("X-Request-Id");
 
   if (!response.ok) {
-    throw new Error("error" in payload && payload.error ? payload.error : "Request failed.");
+    const errorPayload = payload as ApiErrorPayload;
+    console.error(`[answer] ${model} failed`, {
+      status: response.status,
+      requestId: errorPayload.requestId ?? requestId,
+      model: errorPayload.model ?? model,
+      upstreamStatus: errorPayload.upstreamStatus ?? null,
+      error: errorPayload.error ?? "Request failed.",
+      payload
+    });
+    throw new Error(errorPayload.error ?? "Request failed.");
   }
 
-  return payload as AnswerResponse;
+  const result = payload as AnswerResponse;
+  console.log(`[answer] ${model} ok`, {
+    requestId,
+    resolvedModel: result.model,
+    answer: result.answer,
+    probabilities: result.probabilities,
+    decisionToken: result.decisionToken
+  });
+
+  return result;
 }
 
 export async function askQuestions(
@@ -70,17 +101,30 @@ export async function askQuestions(
   models: ModelId[],
   allowMaybe: boolean
 ): Promise<ModelRunResult[]> {
-  return Promise.all(
+  console.log(`[answer] run start`, { models, allowMaybe, questionLength: question.length });
+
+  const results = await Promise.all(
     models.map(async (model) => {
       try {
         return { model, ok: true as const, result: await askQuestion(question, model, allowMaybe) };
       } catch (runError) {
+        const error = runError instanceof Error ? runError.message : "Request failed.";
+        console.error(`[answer] ${model} caught`, { error });
         return {
           model,
           ok: false as const,
-          error: runError instanceof Error ? runError.message : "Request failed."
+          error
         };
       }
     })
   );
+
+  const failed = results.filter((run) => !run.ok);
+  console.log(`[answer] run finish`, {
+    total: results.length,
+    ok: results.length - failed.length,
+    failed: failed.map((run) => ({ model: run.model, error: run.error }))
+  });
+
+  return results;
 }
