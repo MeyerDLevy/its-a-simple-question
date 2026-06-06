@@ -22,7 +22,6 @@ const AVAILABLE_MODELS = [
   "openai/gpt-oss-120b",
   "mistralai/ministral-14b-2512",
   "google/gemma-4-26b-a4b-it",
-  "google/gemma-4-31b-it",
   "deepseek/deepseek-v4-pro",
   "qwen/qwen3.7-plus",
   "minimax/minimax-m2.5",

@@ -6,7 +6,6 @@ export const MODEL_OPTIONS = [
   { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B" },
   { id: "mistralai/ministral-14b-2512", label: "Ministral 14B" },
   { id: "google/gemma-4-26b-a4b-it", label: "Gemma 4 26B" },
-  { id: "google/gemma-4-31b-it", label: "Gemma 4 31B" },
   { id: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
   { id: "qwen/qwen3.7-plus", label: "Qwen 3.7 Plus" },
   { id: "minimax/minimax-m2.5", label: "MiniMax M2.5" },
