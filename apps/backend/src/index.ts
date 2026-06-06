@@ -61,6 +61,7 @@ const DEFAULT_MODEL: ModelId = "openai/gpt-4o-mini";
 const PORT = Number(process.env.PORT ?? 3001);
 const FALLBACK_MODEL = getFallbackModel(process.env.OPENROUTER_MODEL);
 const MAX_QUESTION_LENGTH = 2000;
+const TOP_LOGPROBS = 3;
 
 const app = express();
 
@@ -135,18 +136,20 @@ app.post("/api/answer", async (req, res, next) => {
     const model = parseModel(req.body?.model, FALLBACK_MODEL);
     const allowMaybe = parseAllowMaybe(req.body?.allowMaybe);
 
+    const requestBody = buildChatRequest(model, question, allowMaybe);
+
     logInfo("answer:openrouter_request:start", {
       requestId,
       model,
       allowMaybe,
-      questionLength: question.length
+      questionLength: question.length,
+      topLogprobs: TOP_LOGPROBS,
+      requestBody
     });
 
     const allowedAnswers = getAllowedAnswers(allowMaybe);
 
-    const response = await createOpenRouterCompletion(
-      buildChatRequest(model, question, allowMaybe)
-    );
+    const response = await createOpenRouterCompletion(requestBody);
 
     logInfo("answer:openrouter_request:finish", {
       requestId,
@@ -321,7 +324,7 @@ function buildChatRequest(model: ModelId, question: string, allowMaybe: boolean)
     model,
     temperature: 0,
     logprobs: true,
-    top_logprobs: 20,
+    top_logprobs: TOP_LOGPROBS,
     messages: [
       { role: "system", content: buildInstructions(allowMaybe) },
       { role: "user", content: question }
