@@ -2,7 +2,6 @@ import cors from "cors";
 import crypto from "node:crypto";
 import "dotenv/config";
 import express from "express";
-import OpenAI from "openai";
 
 type Answer = "Yes" | "No" | "Maybe";
 
@@ -18,16 +17,37 @@ type AnswerProbability = {
 };
 
 const AVAILABLE_MODELS = [
-  "openai/gpt-4.1",
-  "openai/gpt-4.1-mini",
-  "openai/gpt-4.1-nano",
   "openai/gpt-4o",
   "openai/gpt-4o-mini",
-  "deepseek/deepseek-v4-flash",
-  "qwen/qwen3.5-27b",
+  "openai/gpt-4-turbo",
   "mistralai/ministral-14b-2512",
-  "google/gemma-4-26b-a4b-it"
+  "google/gemma-4-26b-a4b-it",
+  "google/gemma-4-31b-it",
+  "deepseek/deepseek-v4-flash",
+  "qwen/qwen3.5-27b"
 ] as const;
+
+type LogprobEntry = {
+  token: string;
+  logprob: number;
+  top_logprobs?: Array<{ token: string; logprob: number }>;
+};
+
+type OpenRouterChatResponse = {
+  id: string;
+  model?: string;
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }> | null;
+    };
+    logprobs?:
+      | { content?: LogprobEntry[] }
+      | LogprobEntry[]
+      | null;
+  }>;
+  usage?: unknown;
+  error?: { message?: string };
+};
 
 type ModelId = (typeof AVAILABLE_MODELS)[number];
 
@@ -41,14 +61,6 @@ const FALLBACK_MODEL = getFallbackModel(process.env.OPENROUTER_MODEL);
 const MAX_QUESTION_LENGTH = 2000;
 
 const app = express();
-const openai = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY || "missing-key",
-  defaultHeaders: {
-    "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "",
-    "X-Title": process.env.OPENROUTER_SITE_NAME ?? "It's a Simple Question"
-  }
-});
 
 const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
   .split(",")
@@ -130,35 +142,19 @@ app.post("/api/answer", async (req, res, next) => {
 
     const allowedAnswers = getAllowedAnswers(allowMaybe);
 
-    const response = await openai.chat.completions.create({
-      model,
-      temperature: 0,
-      logprobs: true,
-      top_logprobs: 20,
-      messages: [
-        { role: "system", content: buildInstructions(allowMaybe) },
-        { role: "user", content: question }
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "yes_no_answer",
-          strict: true,
-          schema: buildAnswerSchema(allowMaybe)
-        }
-      },
-      provider: { require_parameters: true }
-    } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+    const response = await createOpenRouterCompletion(
+      buildChatRequest(model, question, allowMaybe)
+    );
 
     logInfo("answer:openrouter_request:finish", {
       requestId,
       responseId: response.id,
       model: response.model ?? model,
-      outputTokenCount: response.usage?.completion_tokens ?? null,
-      totalTokenCount: response.usage?.total_tokens ?? null
+      outputTokenCount: (response.usage as { completion_tokens?: number } | null)?.completion_tokens ?? null,
+      totalTokenCount: (response.usage as { total_tokens?: number } | null)?.total_tokens ?? null
     });
 
-    const outputText = response.choices[0]?.message?.content ?? "";
+    const outputText = extractOutputText(response);
     const parsed = parseStructuredAnswer(outputText, allowMaybe);
     const logprobs = collectOutputLogprobs(response);
     const probabilityData = extractAnswerProbabilities(logprobs, parsed.answer, allowedAnswers);
@@ -294,6 +290,85 @@ function buildInstructions(allowMaybe: boolean): string {
   return "Answer the user's question using only the structured JSON schema. Choose Yes when the answer is more likely yes, otherwise choose No. Do not add explanation.";
 }
 
+function needsNonThinkingMode(model: string): boolean {
+  return model.startsWith("deepseek/") || model.startsWith("qwen/");
+}
+
+function buildChatRequest(model: ModelId, question: string, allowMaybe: boolean) {
+  const body: Record<string, unknown> = {
+    model,
+    temperature: 0,
+    logprobs: true,
+    top_logprobs: 20,
+    messages: [
+      { role: "system", content: buildInstructions(allowMaybe) },
+      { role: "user", content: question }
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "yes_no_answer",
+        strict: true,
+        schema: buildAnswerSchema(allowMaybe)
+      }
+    },
+    provider: { require_parameters: true }
+  };
+
+  if (needsNonThinkingMode(model)) {
+    body.reasoning = { effort: "none" };
+  }
+
+  return body;
+}
+
+async function createOpenRouterCompletion(body: Record<string, unknown>): Promise<OpenRouterChatResponse> {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "",
+      "X-Title": process.env.OPENROUTER_SITE_NAME ?? "It's a Simple Question"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const payload = (await response.json()) as OpenRouterChatResponse;
+
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? `OpenRouter request failed (${response.status}).`);
+  }
+
+  return payload;
+}
+
+function extractOutputText(response: OpenRouterChatResponse): string {
+  const message = response.choices?.[0]?.message;
+
+  if (!message) {
+    throw new Error("Model returned no completion choice.");
+  }
+
+  const content = message.content;
+
+  if (typeof content === "string" && content.length > 0) {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => (typeof part.text === "string" ? part.text : ""))
+      .join("");
+
+    if (text.length > 0) {
+      return text;
+    }
+  }
+
+  throw new Error("Model returned empty message content.");
+}
+
 function buildAnswerSchema(allowMaybe: boolean) {
   return {
     type: "object",
@@ -319,12 +394,13 @@ function parseStructuredAnswer(outputText: string, allowMaybe: boolean): { answe
   return { answer: parsed.answer as Answer };
 }
 
-function collectOutputLogprobs(response: OpenAI.Chat.ChatCompletion): Array<{
+function collectOutputLogprobs(response: OpenRouterChatResponse): Array<{
   token: string;
   logprob: number;
   top_logprobs?: Array<{ token: string; logprob: number }>;
 }> {
-  const content = response.choices[0]?.logprobs?.content ?? [];
+  const logprobs = response.choices?.[0]?.logprobs;
+  const content = Array.isArray(logprobs) ? logprobs : (logprobs?.content ?? []);
   const entries: Array<{
     token: string;
     logprob: number;
