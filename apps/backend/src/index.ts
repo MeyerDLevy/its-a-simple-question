@@ -20,11 +20,13 @@ const AVAILABLE_MODELS = [
   "openai/gpt-4o",
   "openai/gpt-4o-mini",
   "openai/gpt-4-turbo",
+  "openai/gpt-oss-120b",
   "mistralai/ministral-14b-2512",
   "google/gemma-4-26b-a4b-it",
   "google/gemma-4-31b-it",
-  "deepseek/deepseek-v4-flash",
-  "qwen/qwen3.5-27b"
+  "deepseek/deepseek-v4-pro",
+  "qwen/qwen3.7-plus",
+  "x-ai/grok-build-0.1"
 ] as const;
 
 type LogprobEntry = {
